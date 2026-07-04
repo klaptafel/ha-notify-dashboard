@@ -1,0 +1,12 @@
+{
+  "domain": "notify_dashboard",
+  "name": "Notify Dashboard",
+  "codeowners": ["@klaptafel"],
+  "config_flow": true,
+  "dependencies": ["http", "frontend"],
+  "documentation": "https://github.com/klaptafel/ha-notify-dashboard",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/klaptafel/ha-notify-dashboard/issues",
+  "requirements": [],
+  "version": "0.1.7"
+}

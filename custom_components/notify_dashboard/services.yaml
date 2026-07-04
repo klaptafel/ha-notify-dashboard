@@ -1,0 +1,13 @@
+dismiss:
+  name: Dismiss
+  description: Verwijder een melding of live activity uit notify.dashboard (op id).
+  fields:
+    id:
+      required: true
+      example: "3f2e1a90-1234-4a56-8abc-9876543210ab"
+      selector:
+        text:
+
+dismiss_all:
+  name: Dismiss all
+  description: Verwijder alle notificaties (behalve persistent-gemarkeerde).

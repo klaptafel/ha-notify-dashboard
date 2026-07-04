@@ -1,0 +1,44 @@
+rules:
+  # Bronze
+  config-flow: done
+  unique-config-entry: done
+  entity-unique-id: done
+  entity-event-setup: done
+  action-setup:
+    status: exempt
+    comment: >
+      Services worden geregistreerd in _async_ensure_core, die zowel vanuit
+      async_setup als async_setup_entry kan lopen (welke van de twee als
+      eerste binnenkomt is niet gegarandeerd, omdat notify_dashboard zowel
+      YAML- als config-entry-setup ondersteunt). Idempotent, dus functioneel
+      geen probleem, maar niet de letterlijke "altijd via async_setup"-vorm
+      die deze regel voorschrijft.
+  runtime-data:
+    status: exempt
+    comment: >
+      Kan niet volledig: het legacy notify-platform (notify.py) ontvangt
+      geen ConfigEntry-object van HA (BaseNotificationService.async_get_service
+      krijgt alleen hass/config), dus die code kan entry.runtime_data
+      structureel niet bereiken. hass.data[DOMAIN] blijft daarom de
+      canonieke opslagplek; dit is een architecturale beperking van het
+      legacy notify-platform zelf, niet een keuze die we hier kunnen
+      oplossen zonder de YAML-only notify.dashboard-service op te geven.
+  has-entity-name: done
+  common-modules: done
+  dependency-transparency: done
+  docs-high-level-description: done
+  docs-installation-instructions: done
+  docs-removal-instructions: done
+  docs-actions: done
+  brands:
+    status: todo
+    comment: Nog geen brand-assets aangeleverd bij home-assistant/brands.
+  config-flow-test-coverage:
+    status: todo
+    comment: Geen geautomatiseerde tests aanwezig — bewuste keuze voor deze persoonlijke repo, geen kern-inclusie beoogd.
+  test-before-setup:
+    status: exempt
+    comment: Geen extern apparaat/verbinding om te valideren; de integratie heeft geen faalbare "connectie".
+  appropriate-polling:
+    status: exempt
+    comment: Push-based via notify-aanroepen en een dispatcher-signal, geen polling.

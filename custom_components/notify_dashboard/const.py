@@ -1,0 +1,27 @@
+"""Constants for Notify Dashboard."""
+
+DOMAIN = "notify_dashboard"
+
+# Config
+CONF_MIRROR_DISMISS_TO = "mirror_dismiss_to"
+
+# Storage
+STORAGE_VERSION = 1
+STORAGE_KEY = f"{DOMAIN}.notifications"
+
+# Retentie (zie ontwerpdocument, punt 7)
+MAX_NOTIFICATIONS = 100
+MAX_AGE_DAYS = 30
+LIVE_ACTIVITY_STALE_HOURS = 8
+
+# Commando-berichten die nooit als content getoond mogen worden
+COMMAND_MESSAGES = {"clear_notification", "TTS", "delete_alert", "remove_channel"}
+
+# Events / signals
+EVENT_NOTIFICATION_ACTION = "mobile_app_notification_action"
+SIGNAL_UPDATE = f"{DOMAIN}_update"
+
+# Services
+SERVICE_DISMISS = "dismiss"
+SERVICE_DISMISS_ALL = "dismiss_all"
+ATTR_ID = "id"
