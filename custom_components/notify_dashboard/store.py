@@ -31,6 +31,20 @@ from .const import (
 CLEANUP_INTERVAL = timedelta(seconds=15)
 
 
+class NotificationNotFoundError(Exception):
+    """Geen notification of live activity met dit id gevonden."""
+
+
+class NotificationNotDismissableError(Exception):
+    """Item bestaat, maar mag niet handmatig gedismissed worden.
+
+    Geldt uitsluitend voor persistent-gemarkeerde notifications. Live
+    activities zijn wél gewoon dismissable via deze weg (zelfde sluiten-knop
+    als een normale notification) — dat is een bewuste keuze, los van hoe
+    clear_notification/progress: -1 losstaand ook al voor beëindiging zorgen.
+    """
+
+
 class NotifyDashboardStore:
     """Wraps a single HA Store holding notifications + live_activities."""
 
@@ -85,14 +99,19 @@ class NotifyDashboardStore:
             expires_at = item["created_at"] + timeout if timeout else item["created_at"] + max_age
             if now < expires_at:
                 kept.append(item)
+        # Al nieuwste-eerst (insert(0, ...) bij toevoegen) — geen resort nodig.
         # Hard plafond — oudste eruit, ongeacht leeftijd (spam-vangnet).
-        kept.sort(key=lambda i: i["created_at"], reverse=True)
         self._data["notifications"] = kept[:MAX_NOTIFICATIONS]
 
         live = self._data["live_activities"]
         self._data["live_activities"] = {
             tag: item for tag, item in live.items() if now - item["updated_at"] < stale_after
         }
+
+    def _remove_notifications_by_tag(self, tag: str) -> None:
+        self._data["notifications"] = [
+            n for n in self._data["notifications"] if n.get("tag") != tag
+        ]
 
     async def async_add_notification(self, title: str | None, message: str, data: dict) -> None:
         tag = data.get("tag")
@@ -110,9 +129,7 @@ class NotifyDashboardStore:
         }
         if tag:
             # Tag-replace = volledige vervanging, geen veld-merge (optie 1).
-            self._data["notifications"] = [
-                n for n in self._data["notifications"] if n.get("tag") != tag
-            ]
+            self._remove_notifications_by_tag(tag)
         self._data["notifications"].insert(0, entry)
         await self._async_save()
 
@@ -136,37 +153,49 @@ class NotifyDashboardStore:
         await self._async_save()
 
     async def async_clear_by_tag(self, tag: str) -> None:
-        self._data["notifications"] = [
-            n for n in self._data["notifications"] if n.get("tag") != tag
-        ]
+        self._remove_notifications_by_tag(tag)
         self._data["live_activities"].pop(tag, None)
         await self._async_save()
 
-    async def async_dismiss(self, item_id: str) -> dict | None:
+    async def async_dismiss(self, item_id: str) -> dict:
         """Verwijder een notification óf een live activity, op basis van id.
 
         Voor notifications is id een uuid; voor live activities is id gelijk
-        aan de tag (zie async_upsert_live_activity). Gebruiker kan dus beide
-        gewoon wegklikken — alleen `persistent: true` blokkeert dit nog
-        (uitsluitend van toepassing op notifications).
+        aan de tag. Persistent-gemarkeerde notifications kunnen niet
+        gedismissed worden (NotificationNotDismissableError); een onbekend id
+        geeft NotificationNotFoundError — de aanroeper (de dismiss-service)
+        vertaalt dat naar een duidelijke foutmelding i.p.v. stil niets te doen.
         """
-        for n in self._data["notifications"]:
-            if n["id"] == item_id and not n.get("data", {}).get("persistent"):
-                self._data["notifications"] = [
-                    x for x in self._data["notifications"] if x["id"] != item_id
-                ]
-                await self._async_save()
-                return n
+        notifications = self._data["notifications"]
+        match = next((n for n in notifications if n["id"] == item_id), None)
+        if match is not None:
+            if match.get("data", {}).get("persistent"):
+                raise NotificationNotDismissableError(item_id)
+            notifications.remove(match)
+            await self._async_save()
+            return match
 
         if item_id in self._data["live_activities"]:
             item = self._data["live_activities"].pop(item_id)
             await self._async_save()
             return item
 
-        return None
+        raise NotificationNotFoundError(item_id)
 
-    async def async_dismiss_all_notifications(self) -> None:
-        self._data["notifications"] = [
-            n for n in self._data["notifications"] if n.get("data", {}).get("persistent")
-        ]
+    async def async_dismiss_all_notifications(self) -> list[str]:
+        """Verwijder alle non-persistent notifications.
+
+        Geeft de tags van de verwijderde items terug zodat de aanroeper
+        mirror_dismiss_to hierop kan toepassen — zelfde als bij een losse
+        dismiss, nu ook voor de bulk-variant.
+        """
+        kept = []
+        cleared_tags = []
+        for n in self._data["notifications"]:
+            if n.get("data", {}).get("persistent"):
+                kept.append(n)
+            elif n.get("tag"):
+                cleared_tags.append(n["tag"])
+        self._data["notifications"] = kept
         await self._async_save()
+        return cleared_tags

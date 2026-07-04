@@ -13,14 +13,14 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
-from .const import CONF_MIRROR_DISMISS_TO, DOMAIN
+from .const import CONF_MIRROR_DISMISS_TO, DOMAIN, NOTIFY_ENTITY_DOMAIN
 
 
 def _mirror_dismiss_schema(default: list[str]) -> vol.Schema:
     return vol.Schema(
         {
             vol.Optional(CONF_MIRROR_DISMISS_TO, default=default): selector.selector(
-                {"entity": {"multiple": True, "filter": {"domain": "notify"}}}
+                {"entity": {"multiple": True, "filter": {"domain": NOTIFY_ENTITY_DOMAIN}}}
             )
         }
     )

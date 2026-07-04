@@ -5,14 +5,14 @@ rules:
   entity-unique-id: done
   entity-event-setup: done
   action-setup:
-    status: exempt
+    status: done
     comment: >
-      Services worden geregistreerd in _async_ensure_core, die zowel vanuit
-      async_setup als async_setup_entry kan lopen (welke van de twee als
-      eerste binnenkomt is niet gegarandeerd, omdat notify_dashboard zowel
-      YAML- als config-entry-setup ondersteunt). Idempotent, dus functioneel
-      geen probleem, maar niet de letterlijke "altijd via async_setup"-vorm
-      die deze regel voorschrijft.
+      Services worden geregistreerd in _async_ensure_core, aangeroepen vanuit
+      async_setup. HA's bootstrap roept voor een domain altijd eerst
+      async_setup aan (ook met lege config) vóórdat config entries voor
+      datzelfde domain worden opgezet, dus dit gebeurt in de praktijk altijd
+      via async_setup — ook wanneer alleen een config entry aanwezig is en
+      geen YAML.
   runtime-data:
     status: exempt
     comment: >
@@ -30,6 +30,12 @@ rules:
   docs-installation-instructions: done
   docs-removal-instructions: done
   docs-actions: done
+  docs-triggers:
+    status: exempt
+    comment: Geen triggers geleverd door deze integratie.
+  docs-conditions:
+    status: exempt
+    comment: Geen condities geleverd door deze integratie.
   brands:
     status: todo
     comment: Nog geen brand-assets aangeleverd bij home-assistant/brands.
@@ -42,3 +48,32 @@ rules:
   appropriate-polling:
     status: exempt
     comment: Push-based via notify-aanroepen en een dispatcher-signal, geen polling.
+
+  # Silver
+  action-exceptions:
+    status: done
+    comment: >
+      dismiss raist ServiceValidationError bij een onbekend id
+      (NotificationNotFoundError) en bij een persistent-gemarkeerde
+      notification (NotificationNotDismissableError) — i.p.v. stil te falen.
+  config-entry-unloading: done
+  integration-owner: done
+  docs-configuration-parameters: done
+  docs-installation-parameters:
+    status: exempt
+    comment: Installatie vereist geen parameters (geen host/token/device-keuze).
+  parallel-updates:
+    status: exempt
+    comment: Geen coordinator/polling-entities.
+  entity-unavailable:
+    status: exempt
+    comment: Geen externe verbinding die kan wegvallen.
+  log-when-unavailable:
+    status: exempt
+    comment: Zelfde reden als entity-unavailable.
+  reauthentication-flow:
+    status: exempt
+    comment: Geen authenticatie nodig.
+  test-coverage:
+    status: todo
+    comment: Zelfde reden als config-flow-test-coverage.

@@ -1,6 +1,8 @@
 dismiss:
   name: Dismiss
-  description: Verwijder een melding of live activity uit notify.dashboard (op id).
+  description: >-
+    Verwijder een melding of live activity uit notify.dashboard (op id). Werkt
+    niet op persistent-gemarkeerde meldingen.
   fields:
     id:
       required: true

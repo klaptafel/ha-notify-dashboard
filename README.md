@@ -106,7 +106,7 @@ data:
 
 | Service | Fields | Does |
 |---|---|---|
-| `notify_dashboard.dismiss` | `id` (required) | Removes a notification or live activity. For notifications `id` is a uuid; for live activities `id` equals the `tag`. Ignored if the notification has `persistent: true`. |
+| `notify_dashboard.dismiss` | `id` (required) | Removes a notification or live activity. For notifications `id` is a uuid; for live activities `id` equals the `tag`. Raises an error for an unknown id or a `persistent: true` notification. |
 | `notify_dashboard.dismiss_all` | — | Removes all notifications (except `persistent`-marked ones). Leaves live activities untouched. |
 
 ---

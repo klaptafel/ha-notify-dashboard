@@ -4,6 +4,9 @@ DOMAIN = "notify_dashboard"
 
 # Config
 CONF_MIRROR_DISMISS_TO = "mirror_dismiss_to"
+# Enige entity-domain toegestaan voor mirror_dismiss_to — gedeeld tussen de
+# YAML-validatie (__init__.py) en de UI-selector (config_flow.py).
+NOTIFY_ENTITY_DOMAIN = "notify"
 
 # Storage
 STORAGE_VERSION = 1

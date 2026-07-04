@@ -22,6 +22,7 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv, discovery
 from homeassistant.loader import async_get_integration
 
@@ -29,19 +30,33 @@ from .const import (
     ATTR_ID,
     CONF_MIRROR_DISMISS_TO,
     DOMAIN,
+    NOTIFY_ENTITY_DOMAIN,
     SERVICE_DISMISS,
     SERVICE_DISMISS_ALL,
 )
-from .store import NotifyDashboardStore
+from .store import (
+    NotificationNotDismissableError,
+    NotificationNotFoundError,
+    NotifyDashboardStore,
+)
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _validate_notify_entity(value: str) -> str:
+    """Zelfde domain-restrictie als de UI-selector in config_flow.py."""
+    entity_id = cv.entity_id(value)
+    if entity_id.split(".", 1)[0] != NOTIFY_ENTITY_DOMAIN:
+        raise vol.Invalid(f"'{entity_id}' is geen notify-entity")
+    return entity_id
+
 
 CONFIG_SCHEMA = vol.Schema(
     {
         DOMAIN: vol.Schema(
             {
                 vol.Optional(CONF_MIRROR_DISMISS_TO, default=[]): vol.All(
-                    cv.ensure_list, [cv.entity_id]
+                    cv.ensure_list, [_validate_notify_entity]
                 ),
             }
         )
@@ -133,12 +148,25 @@ async def _async_ensure_core(hass: HomeAssistant, config: dict) -> None:
 
     async def handle_dismiss(call: ServiceCall) -> None:
         item_id = call.data[ATTR_ID]
-        item = await store.async_dismiss(item_id)
-        if item and item.get("tag") and hass.data[DOMAIN]["mirror_dismiss_to"]:
+        try:
+            item = await store.async_dismiss(item_id)
+        except NotificationNotFoundError as err:
+            raise ServiceValidationError(
+                f"Geen melding gevonden met id '{item_id}'"
+            ) from err
+        except NotificationNotDismissableError as err:
+            raise ServiceValidationError(
+                f"'{item_id}' kan niet gedismissed worden — deze notification is persistent"
+            ) from err
+
+        if item.get("tag") and hass.data[DOMAIN]["mirror_dismiss_to"]:
             await _async_mirror_clear(hass, item["tag"])
 
     async def handle_dismiss_all(call: ServiceCall) -> None:
-        await store.async_dismiss_all_notifications()
+        cleared_tags = await store.async_dismiss_all_notifications()
+        if hass.data[DOMAIN]["mirror_dismiss_to"]:
+            for tag in cleared_tags:
+                await _async_mirror_clear(hass, tag)
 
     hass.services.async_register(DOMAIN, SERVICE_DISMISS, handle_dismiss, schema=DISMISS_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_DISMISS_ALL, handle_dismiss_all)
