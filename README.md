@@ -135,6 +135,52 @@ data:
         destructive: true
 ```
 
+`subtitle` renders as a secondary line between the title and message (iOS-only on the companion app; works on any notification here, not just live activities):
+
+```yaml
+action: notify.dashboard
+data:
+  title: Package delivered
+  data:
+    subtitle: Front door camera
+    subject: Front door camera   # Android's equivalent field, same rendering here
+```
+
+`color` renders as a left accent stripe on the row, not as text or a background wash — an arbitrary user-supplied color used for text/background risks failing WCAG contrast, so it stays decorative-only. Handy for telling notifications apart at a glance in a list:
+
+```yaml
+action: notify.dashboard
+data:
+  title: Security alert
+  data:
+    color: "#e53935"
+```
+
+`progress_indeterminate: true` on a live activity shows a sliding animated bar instead of a percentage fill, for tasks with no known completion time — it's only a fallback for when there's no usable percentage; a concrete `progress`/`progress_max` in the same payload always wins. Paste this into **Developer Tools → Actions** (YAML mode) to see it live:
+
+```yaml
+action: notify.dashboard
+data:
+  title: Backing up
+  message: Please wait…
+  data:
+    tag: backup_job
+    live_update: true
+    notification_icon: mdi:backup-restore
+    notification_icon_color: "#7E57C2"
+    progress_indeterminate: true
+```
+
+Clear it afterward with:
+
+```yaml
+action: notify.dashboard
+data:
+  message: clear_notification
+  data:
+    tag: backup_job
+```
+
 ---
 
 ## Services
@@ -160,5 +206,5 @@ Stored data lives in `.storage/notify_dashboard.notifications` — delete that f
 
 ## Roadmap
 
-- `image`, `icon_url`, `alert_once`, `subtitle`/`subject`, `color`, `critical_text`, `progress_indeterminate`
+- `image`, `icon_url`, `alert_once`, `critical_text`
 - `notify-dashboard-badge` for a count badge in a Sections dashboard header

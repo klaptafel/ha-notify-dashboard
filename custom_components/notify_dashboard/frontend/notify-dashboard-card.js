@@ -41,7 +41,14 @@ const CARD_CSS = `
   }
   :host(.hidden) { display: none !important; margin: 0 !important; padding: 0 !important; min-height: 0 !important; }
 
-  .row { display: flex; flex-direction: column; padding: 12px 16px; gap: 14px; }
+  /* border-left instead of a text/background color: color is user-supplied
+     and arbitrary, so using it for text or a large background wash risks
+     failing WCAG contrast against title/message. A thin accent stripe is
+     decorative, not a text/UI-boundary contrast requirement, so it stays
+     safe regardless of which color comes in — while still giving an
+     at-a-glance way to recognize a notification in a list. Transparent by
+     default so rows without a color line up identically to rows with one. */
+  .row { display: flex; flex-direction: column; padding: 12px 16px; gap: 14px; border-left: 4px solid transparent; }
   .row + .row { border-top: 1px solid var(--divider-color, rgba(0,0,0,.06)); }
 
   /* flex-start (not center): icon/dismiss must stay pinned to the top and
@@ -70,6 +77,11 @@ const CARD_CSS = `
   .title {
     font-size: var(--ha-font-size-m, 14px); font-weight: var(--ha-font-weight-medium, 500);
     color: var(--primary-text-color); line-height: var(--ha-line-height-condensed, 1.3);
+  }
+  .subtitle {
+    font-size: var(--ha-font-size-s, 12px); font-weight: var(--ha-font-weight-medium, 500);
+    color: var(--secondary-text-color); line-height: var(--ha-line-height-condensed, 1.3);
+    margin-top: 2px;
   }
   .message {
     font-size: var(--ha-font-size-s, 12px); color: var(--primary-text-color);
@@ -116,12 +128,24 @@ const CARD_CSS = `
      instead of a light rounding. */
   .progress-wrap { display: flex; align-items: center; gap: 8px; }
   .progress-feature {
+    position: relative;
     width: 100%; height: 14px; border-radius: var(--control-button-border-radius, 5px);
     background: color-mix(in srgb, var(--secondary-text-color) 12%, transparent);
     overflow: hidden;
   }
   .progress-wrap .progress-feature { flex: 1; width: auto; }
   .progress-fill { height: 100%; border-radius: inherit; transition: width 300ms ease-in-out; }
+  /* progress_indeterminate: no known percentage, so a sliding segment
+     instead of a width-based fill — same track/box as the regular bar. */
+  .progress-fill.indeterminate {
+    position: absolute; top: 0; height: 100%; width: 40%;
+    transition: none;
+    animation: notify-dashboard-indeterminate 1.4s ease-in-out infinite;
+  }
+  @keyframes notify-dashboard-indeterminate {
+    0% { left: -40%; }
+    100% { left: 100%; }
+  }
   /* Same width as the dismiss button (.icon-wrap, 38px), text centered. */
   .progress-label {
     flex-shrink: 0; width: 38px; text-align: center;
@@ -129,6 +153,12 @@ const CARD_CSS = `
     font-variant-numeric: tabular-nums;
   }
 
+  /* Without this, a row's straight border-left (the color accent stripe)
+     overhangs past ha-card's own rounded corners — visible on the first/last
+     row in single layout, and on every row in split layout, since there
+     each row gets its own fully-rounded card. ha-card doesn't clip its own
+     children by default. */
+  ha-card { overflow: hidden; }
   .split-wrapper { display: flex; flex-direction: column; gap: 8px; }
   .split-wrapper ha-card .row { border-top: none; }
 
@@ -411,6 +441,9 @@ class NotifyDashboardCard extends HTMLElement {
     const actions = Array.isArray(data.actions) ? data.actions : [];
 
     const row = mk('div', 'row');
+    // Accent stripe, not text/background — see the .row CSS comment on why
+    // an arbitrary user-supplied color stays off of text/large surfaces.
+    if (data.color) row.style.borderLeftColor = data.color;
     const main = mk('div', 'row-main');
 
     const iconWrap = mk('div', 'icon-wrap' + (url ? ' clickable' : ''));
@@ -435,6 +468,7 @@ class NotifyDashboardCard extends HTMLElement {
     const chronoAsMessage = !item.message && hasChronometer;
 
     if (titleText) content.appendChild(mk('div', 'title', titleText));
+    if (data.subtitle) content.appendChild(mk('div', 'subtitle', data.subtitle));
     if (showMessage) content.appendChild(mk('div', 'message', item.message));
 
     // when_relative adds when to updated_at (the moment we received it)
@@ -500,11 +534,27 @@ class NotifyDashboardCard extends HTMLElement {
       Number.isFinite(data.progress_max) &&
       data.progress_max > 0;
 
-    if (hasProgress || showOpenBtn || actions.length) {
+    // A concrete percentage wins if we have one — it's strictly more useful
+    // than a spinner. Android's native API lets progress_indeterminate
+    // override stale progress values left behind from an earlier
+    // setProgress() call, but that quirk doesn't apply here: our store does
+    // a full replace on every update, so if both are present they arrived
+    // together in the same payload, deliberately. Indeterminate is only the
+    // fallback for when there's no usable percentage to show.
+    const hasIndeterminateProgress =
+      item._kind === 'live_activities' && data.progress_indeterminate === true && !hasProgress;
+
+    if (hasIndeterminateProgress || hasProgress || showOpenBtn || actions.length) {
       // Always stacked vertically — labels are often too long for a
       // horizontal row of equally-sized buttons.
       const rowActions = mk('div', 'row-actions');
-      if (hasProgress) {
+      if (hasIndeterminateProgress) {
+        const bar = mk('div', 'progress-feature');
+        const fill = mk('div', 'progress-fill indeterminate');
+        fill.style.background = color;
+        bar.appendChild(fill);
+        rowActions.appendChild(bar);
+      } else if (hasProgress) {
         const pct = Math.max(0, Math.min(100, (data.progress / data.progress_max) * 100));
         const bar = mk('div', 'progress-feature');
         const fill = mk('div', 'progress-fill');
