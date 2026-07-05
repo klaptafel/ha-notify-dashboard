@@ -80,6 +80,8 @@ hold_action:
   action: none
 double_tap_action:
   action: none
+confirm_dismiss: false     # ask for confirmation before dismissing
+show_open_action: true     # show an explicit "Open" button for items with a url
 ```
 
 ---
@@ -98,6 +100,39 @@ data:
     live_update: true
     notification_icon: mdi:dishwasher
     notification_icon_color: "#26C6DA"
+    progress: 73
+    progress_max: 100
+```
+
+`progress`/`progress_max` only render as a bar (with a live percentage) on live activities (`live_update: true`) and only when both are set — same condition as the companion app.
+
+`chronometer`/`when` render as a live-ticking countdown/count-up under the title, updating every second entirely client-side (no repeated pushes needed):
+
+```yaml
+action: notify.dashboard
+data:
+  title: Pizza timer
+  data:
+    tag: pizza_timer
+    live_update: true
+    chronometer: true
+    when: 900              # 15 minutes
+    when_relative: true     # when = seconds from now, not a Unix timestamp
+```
+
+`actions` render as pill buttons (`action`, `title`, optional `action_data`, optional `destructive` for red text). Tapping one fires `mobile_app_notification_action`, shows a small spinner, and dismisses the notification ~600ms later — the `url`-driven Open button is unaffected by this and never auto-dismisses.
+
+```yaml
+action: notify.dashboard
+data:
+  title: Update available
+  data:
+    actions:
+      - action: INSTALL
+        title: Install
+      - action: DISMISS_FOREVER
+        title: Ignore
+        destructive: true
 ```
 
 ---
@@ -108,6 +143,7 @@ data:
 |---|---|---|
 | `notify_dashboard.dismiss` | `id` (required) | Removes a notification or live activity. For notifications `id` is a uuid; for live activities `id` equals the `tag`. Raises an error for an unknown id or a `persistent: true` notification. |
 | `notify_dashboard.dismiss_all` | — | Removes all notifications (except `persistent`-marked ones). Leaves live activities untouched. |
+| `notify_dashboard.fire_action` | `action` (required), `tag`, `action_data` | Fires a `mobile_app_notification_action` event, same shape as the companion app. Used internally by the card for action taps — a regular service call rather than the frontend's `fire_event` websocket command, since that one requires an admin user and would silently do nothing for anyone else (e.g. a kiosk tablet on a restricted account). |
 
 ---
 
@@ -125,5 +161,5 @@ Stored data lives in `.storage/notify_dashboard.notifications` — delete that f
 ## Roadmap
 
 - Visual card editor (YAML-only for now)
-- `image`, `icon_url`, progress bar for live activities, `chronometer`/`when`, `alert_once`
+- `image`, `icon_url`, `alert_once`, `subtitle`/`subject`, `color`, `critical_text`, `progress_indeterminate`
 - `notify-dashboard-badge` for a count badge in a Sections dashboard header

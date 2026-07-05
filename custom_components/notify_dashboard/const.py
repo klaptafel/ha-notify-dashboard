@@ -27,4 +27,8 @@ SIGNAL_UPDATE = f"{DOMAIN}_update"
 # Services
 SERVICE_DISMISS = "dismiss"
 SERVICE_DISMISS_ALL = "dismiss_all"
+SERVICE_FIRE_ACTION = "fire_action"
 ATTR_ID = "id"
+ATTR_ACTION = "action"
+ATTR_ACTION_DATA = "action_data"
+ATTR_TAG = "tag"

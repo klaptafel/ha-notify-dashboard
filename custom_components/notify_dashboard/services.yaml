@@ -13,3 +13,25 @@ dismiss:
 dismiss_all:
   name: Dismiss all
   description: Verwijder alle notificaties (behalve persistent-gemarkeerde).
+
+fire_action:
+  name: Fire action
+  description: >-
+    Vuurt een mobile_app_notification_action-event af (zelfde vorm als de
+    companion-app). Wordt intern gebruikt door de card bij een actie-tap —
+    los, admin-onafhankelijk endpoint i.p.v. de fire_event websocket-actie,
+    die alleen door admin-gebruikers aangeroepen mag worden.
+  fields:
+    action:
+      required: true
+      example: "SNOOZE"
+      selector:
+        text:
+    tag:
+      required: false
+      selector:
+        text:
+    action_data:
+      required: false
+      selector:
+        object:

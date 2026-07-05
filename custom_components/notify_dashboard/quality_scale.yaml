@@ -38,7 +38,10 @@ rules:
     comment: Geen condities geleverd door deze integratie.
   brands:
     status: todo
-    comment: Nog geen brand-assets aangeleverd bij home-assistant/brands.
+    comment: >
+      Nog geen brand-assets aangeleverd bij home-assistant/brands. Mapstructuur
+      staat al klaar in brand/ (zie brand/README.md) — alleen de daadwerkelijke
+      icon/logo-bestanden en de PR daarnaartoe ontbreken nog.
   config-flow-test-coverage:
     status: todo
     comment: Geen geautomatiseerde tests aanwezig — bewuste keuze voor deze persoonlijke repo, geen kern-inclusie beoogd.

@@ -182,20 +182,20 @@ class NotifyDashboardStore:
 
         raise NotificationNotFoundError(item_id)
 
-    async def async_dismiss_all_notifications(self) -> list[str]:
+    async def async_dismiss_all_notifications(self) -> list[dict]:
         """Verwijder alle non-persistent notifications.
 
-        Geeft de tags van de verwijderde items terug zodat de aanroeper
-        mirror_dismiss_to hierop kan toepassen — zelfde als bij een losse
-        dismiss, nu ook voor de bulk-variant.
+        Geeft de verwijderde items terug — zelfde vorm als async_dismiss —
+        zodat de aanroeper mirror_dismiss_to hierop kan toepassen net als bij
+        een losse dismiss, nu ook voor de bulk-variant.
         """
         kept = []
-        cleared_tags = []
+        cleared = []
         for n in self._data["notifications"]:
             if n.get("data", {}).get("persistent"):
                 kept.append(n)
-            elif n.get("tag"):
-                cleared_tags.append(n["tag"])
+            else:
+                cleared.append(n)
         self._data["notifications"] = kept
         await self._async_save()
-        return cleared_tags
+        return cleared

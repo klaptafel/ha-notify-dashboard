@@ -13,6 +13,7 @@ ongeacht welk pad als eerste langskomt.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 
@@ -27,12 +28,17 @@ from homeassistant.helpers import config_validation as cv, discovery
 from homeassistant.loader import async_get_integration
 
 from .const import (
+    ATTR_ACTION,
+    ATTR_ACTION_DATA,
     ATTR_ID,
+    ATTR_TAG,
     CONF_MIRROR_DISMISS_TO,
     DOMAIN,
+    EVENT_NOTIFICATION_ACTION,
     NOTIFY_ENTITY_DOMAIN,
     SERVICE_DISMISS,
     SERVICE_DISMISS_ALL,
+    SERVICE_FIRE_ACTION,
 )
 from .store import (
     NotificationNotDismissableError,
@@ -42,21 +48,12 @@ from .store import (
 
 _LOGGER = logging.getLogger(__name__)
 
-
-def _validate_notify_entity(value: str) -> str:
-    """Zelfde domain-restrictie als de UI-selector in config_flow.py."""
-    entity_id = cv.entity_id(value)
-    if entity_id.split(".", 1)[0] != NOTIFY_ENTITY_DOMAIN:
-        raise vol.Invalid(f"'{entity_id}' is geen notify-entity")
-    return entity_id
-
-
 CONFIG_SCHEMA = vol.Schema(
     {
         DOMAIN: vol.Schema(
             {
                 vol.Optional(CONF_MIRROR_DISMISS_TO, default=[]): vol.All(
-                    cv.ensure_list, [_validate_notify_entity]
+                    cv.ensure_list, [vol.All(cv.entity_id, cv.entity_domain(NOTIFY_ENTITY_DOMAIN))]
                 ),
             }
         )
@@ -67,6 +64,14 @@ CONFIG_SCHEMA = vol.Schema(
 FRONTEND_URL_BASE = "/notify_dashboard_frontend"
 
 DISMISS_SCHEMA = vol.Schema({vol.Required(ATTR_ID): cv.string})
+
+FIRE_ACTION_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_ACTION): cv.string,
+        vol.Optional(ATTR_TAG): cv.string,
+        vol.Optional(ATTR_ACTION_DATA): dict,
+    }
+)
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -163,13 +168,29 @@ async def _async_ensure_core(hass: HomeAssistant, config: dict) -> None:
             await _async_mirror_clear(hass, item["tag"])
 
     async def handle_dismiss_all(call: ServiceCall) -> None:
-        cleared_tags = await store.async_dismiss_all_notifications()
+        cleared = await store.async_dismiss_all_notifications()
         if hass.data[DOMAIN]["mirror_dismiss_to"]:
-            for tag in cleared_tags:
-                await _async_mirror_clear(hass, tag)
+            tags = [item["tag"] for item in cleared if item.get("tag")]
+            await asyncio.gather(*(_async_mirror_clear(hass, tag) for tag in tags))
+
+    async def handle_fire_action(call: ServiceCall) -> None:
+        # Vuurt hass.bus.async_fire server-side af i.p.v. de card zelf de
+        # fire_event websocket-actie te laten aanroepen — die vereist
+        # @require_admin in HA core, dus zou voor niet-admin dashboardgebruikers
+        # (bv. een kiosk-tablet met een beperkt account) stil falen. Een gewone
+        # service-aanroep zoals deze heeft die beperking niet.
+        event_data = {ATTR_ACTION: call.data[ATTR_ACTION]}
+        if ATTR_TAG in call.data:
+            event_data[ATTR_TAG] = call.data[ATTR_TAG]
+        if ATTR_ACTION_DATA in call.data:
+            event_data[ATTR_ACTION_DATA] = call.data[ATTR_ACTION_DATA]
+        hass.bus.async_fire(EVENT_NOTIFICATION_ACTION, event_data)
 
     hass.services.async_register(DOMAIN, SERVICE_DISMISS, handle_dismiss, schema=DISMISS_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_DISMISS_ALL, handle_dismiss_all)
+    hass.services.async_register(
+        DOMAIN, SERVICE_FIRE_ACTION, handle_fire_action, schema=FIRE_ACTION_SCHEMA
+    )
 
 
 async def _async_register_lovelace_resource(hass: HomeAssistant) -> None:
@@ -221,8 +242,11 @@ async def _async_mirror_clear(hass: HomeAssistant, tag: str) -> None:
     als target, niet een losse service per entity-naam — moderne notify-
     entities (zoals de companion-app die tegenwoordig gebruikt) draaien
     via dat ene gedeelde endpoint, niet via een eigen service per apparaat.
+    Targets zijn onafhankelijk van elkaar, dus parallel afvuren i.p.v. op
+    elkaar te wachten.
     """
-    for entity_id in hass.data[DOMAIN]["mirror_dismiss_to"]:
+
+    async def _clear_one(entity_id: str) -> None:
         try:
             await hass.services.async_call(
                 "notify",
@@ -233,3 +257,7 @@ async def _async_mirror_clear(hass: HomeAssistant, tag: str) -> None:
             )
         except Exception:  # noqa: BLE001
             _LOGGER.warning("Kon clear_notification niet doorsturen naar %s", entity_id)
+
+    await asyncio.gather(
+        *(_clear_one(entity_id) for entity_id in hass.data[DOMAIN]["mirror_dismiss_to"])
+    )
