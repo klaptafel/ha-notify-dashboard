@@ -29,12 +29,6 @@ rules:
   docs-installation-instructions: done
   docs-removal-instructions: done
   docs-actions: done
-  docs-triggers:
-    status: exempt
-    comment: This integration doesn't provide any triggers.
-  docs-conditions:
-    status: exempt
-    comment: This integration doesn't provide any conditions.
   brands:
     status: todo
     comment: >
@@ -42,8 +36,13 @@ rules:
       structure is already staged in brand/ (see brand/README.md) — only the
       actual icon/logo files and the PR to that repo are still missing.
   config-flow-test-coverage:
-    status: todo
-    comment: No automated tests present — a deliberate choice for this personal repo, not intended for core inclusion.
+    status: done
+    comment: tests/test_config_flow.py — 100% coverage of config_flow.py.
+  test-before-configure:
+    status: exempt
+    comment: >
+      The config flow only lets the user pick mirror_dismiss_to entities —
+      no host/token/connection to validate before creating the entry.
   test-before-setup:
     status: exempt
     comment: No external device/connection to validate; the integration has no failable "connection".
@@ -77,5 +76,99 @@ rules:
     status: exempt
     comment: No authentication needed.
   test-coverage:
-    status: todo
-    comment: Same reason as config-flow-test-coverage.
+    status: done
+    comment: >
+      100% line coverage across every backend module (store, notify, sensor,
+      config_flow, __init__, diagnostics), 95% enforced as a hard CI gate via
+      --cov-fail-under=95.
+
+  # Gold
+  devices:
+    status: exempt
+    comment: >
+      Investigated and confirmed infeasible without restructuring the
+      YAML-compatible setup path: the sensor is added via
+      discovery.async_load_platform (needed so notify.dashboard keeps
+      working from YAML alone, with no config entry at all). HA's
+      EntityPlatform only creates a device for an entity when
+      self.config_entry is set (homeassistant/helpers/entity_platform.py),
+      which only happens when a platform is set up via
+      async_forward_entry_setups — never the case here, regardless of
+      whether a config entry additionally exists. Setting device_info would
+      be silently ignored; same root cause as the runtime-data exemption.
+  diagnostics:
+    status: done
+    comment: >
+      diagnostics.py reports config (mirror_dismiss_to) plus aggregate
+      counts/timestamps only — deliberately never actual title/message/data
+      content, since the diagnostics download is a live, user-facing feature
+      commonly pasted into public GitHub issues, and notification content is
+      arbitrary user/companion-app data with no fixed field list to redact.
+  discovery:
+    status: exempt
+    comment: Nothing to discover — this is a software-only notify target, not a device on the network.
+  discovery-update-info:
+    status: exempt
+    comment: Same reason as discovery.
+  docs-data-update: done
+  docs-examples: done
+  docs-known-limitations: done
+  docs-supported-devices:
+    status: exempt
+    comment: The integration is a service, not device-based.
+  docs-supported-functions: done
+  docs-troubleshooting: done
+  docs-use-cases: done
+  dynamic-devices:
+    status: exempt
+    comment: One static entity, set up once; nothing discovered or added/removed at runtime.
+  entity-category:
+    status: exempt
+    comment: Only one entity (the aggregate sensor) — nothing diagnostic/config-only to categorize.
+  entity-device-class:
+    status: exempt
+    comment: >
+      The sensor's value is a raw count of current notifications/live
+      activities — no standard SensorDeviceClass fits an arbitrary count
+      like this the way e.g. "temperature" fits a measurement.
+  entity-disabled-by-default:
+    status: exempt
+    comment: The one entity is the integration's entire purpose — nothing noisy/optional to disable by default.
+  entity-translations: done
+  exception-translations:
+    status: done
+    comment: >
+      ServiceValidationError raises in __init__.py use translation_key
+      (notification_not_found / notification_not_dismissable) with matching
+      strings.json/translations/nl.json entries, instead of raw f-strings.
+  icon-translations:
+    status: done
+    comment: icons.json replaces the previously hardcoded _attr_icon on the sensor.
+  reconfiguration-flow:
+    status: exempt
+    comment: >
+      The existing options flow already fully covers the one config value
+      (mirror_dismiss_to) — a separate async_step_reconfigure would be a
+      redundant thin duplicate purely to satisfy the literal rule text.
+  repair-issues:
+    status: done
+    comment: >
+      A repair issue is created when a mirror_dismiss_to target entity no
+      longer exists (checked via hass.states.get, since a service call
+      against a missing target entity_id silently no-ops rather than
+      raising — exception handling alone can't catch this case). Self-heals
+      by deleting the issue once the target exists again.
+  stale-devices:
+    status: exempt
+    comment: Same reason as devices — no devices are ever created.
+
+  # Platinum
+  async-dependency:
+    status: exempt
+    comment: No external dependency in manifest.json (empty requirements list).
+  inject-websession:
+    status: exempt
+    comment: No aiohttp client of our own — same reason as async-dependency.
+  strict-typing:
+    status: done
+    comment: mypy --strict passes with zero errors across all 7 source files (pyproject.toml [tool.mypy]).

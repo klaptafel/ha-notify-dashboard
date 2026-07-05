@@ -206,6 +206,28 @@ Stored data lives in `.storage/notify_dashboard.notifications` — delete that f
 
 ---
 
+## How data updates
+
+The dashboard sensor (`sensor.notify_dashboard`) is push-based, not polled — it updates immediately whenever a notification/live activity is added, dismissed, or expires (a 15-second background cleanup timer removes anything past its timeout/max-age, no manual "refresh" needed). The card itself only re-renders the rows that actually changed, so an unrelated update elsewhere in the list won't reset an in-progress chronometer/countdown.
+
+---
+
+## Known limitations
+
+- **Dismiss mirroring only works for Companion App (`mobile_app`) targets.** `mirror_dismiss_to` forwards the same `clear_notification` command the phone app understands — other `notify.*` integrations (Telegram, Pushover, ntfy, Slack, ...) have no equivalent concept of "delete a previously delivered message by tag", so picking one there just delivers a literal, confusing text message instead. A repair issue is raised if a configured target entity no longer exists at all, but this content mismatch can't be detected the same way.
+- **No device registry entry.** The sensor is set up via `discovery.async_load_platform` (needed to keep the YAML-only `notify.dashboard` path working without a config entry), which never attaches a `ConfigEntry` to the entity's platform — and HA only creates a device for an entity when one is attached. The entity still works normally; it just won't show up grouped under a "device" in Settings → Devices & Services.
+- **Single instance only.** Only one config entry is allowed; `mirror_dismiss_to` is a single shared list, not per-dashboard.
+
+---
+
+## Troubleshooting
+
+- **"Found both the YAML key ... and a config entry" warning** — you have both a `notify_dashboard:` YAML block and the config entry's "Configure" settings populated. The config entry always wins; remove the YAML block (keep just the `notify:` platform block, which is unrelated and still required) to clear the warning.
+- **`notify.dashboard` doesn't exist even though the integration is installed** — the config entry only sets up the store/services/frontend/sensor; the actual `notify.dashboard` service still needs the separate YAML platform block from the Configuration section above. This is a limitation of the legacy notify platform itself, not something the UI can replace.
+- **Card added but shows nothing** — check the `entity:` in the card config actually points at your `sensor.notify_dashboard` (or its renamed entity id); the card reads its data entirely from that one entity's attributes.
+
+---
+
 ## Roadmap
 
 - `image`, `icon_url`, `alert_once`, `critical_text`
