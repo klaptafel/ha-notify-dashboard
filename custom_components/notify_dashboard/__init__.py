@@ -16,15 +16,17 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+from typing import TypedDict, cast
 
 import voluptuous as vol
 from homeassistant.components import frontend
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import Event, HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv, discovery
+from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
 from .const import (
@@ -47,6 +49,23 @@ from .store import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class NotifyDashboardData(TypedDict):
+    """Shape of hass.data[DOMAIN] — runtime_data is exempt (see
+    quality_scale.yaml): the legacy notify platform this integration relies
+    on never receives a ConfigEntry, so there's no entry to hang typed
+    runtime_data off in the first place."""
+
+    store: NotifyDashboardStore
+    mirror_dismiss_to: list[str]
+
+
+def get_domain_data(hass: HomeAssistant) -> NotifyDashboardData:
+    """Typed accessor for hass.data[DOMAIN] — one cast at the Any/typed
+    boundary here, real key/type checking at every call site using this."""
+    return cast(NotifyDashboardData, hass.data[DOMAIN])
+
 
 CONFIG_SCHEMA = vol.Schema(
     {
@@ -74,7 +93,7 @@ FIRE_ACTION_SCHEMA = vol.Schema(
 )
 
 
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up via YAML (`notify_dashboard:` key) — optional."""
     await _async_ensure_core(hass, config)
 
@@ -87,7 +106,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 "precedence. Remove the YAML key to get rid of this warning."
             )
         else:
-            hass.data[DOMAIN]["mirror_dismiss_to"] = yaml_conf.get(CONF_MIRROR_DISMISS_TO, [])
+            get_domain_data(hass)["mirror_dismiss_to"] = yaml_conf.get(CONF_MIRROR_DISMISS_TO, [])
 
     return True
 
@@ -96,7 +115,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up via the UI (config entry) — handles mirror_dismiss_to."""
     await _async_ensure_core(hass, {})
 
-    hass.data[DOMAIN]["mirror_dismiss_to"] = entry.options.get(CONF_MIRROR_DISMISS_TO, [])
+    get_domain_data(hass)["mirror_dismiss_to"] = entry.options.get(CONF_MIRROR_DISMISS_TO, [])
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
@@ -107,16 +126,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     place as long as the YAML platform line (`notify: - platform:
     notify_dashboard`) is still active; that can't be cleaned up separately
     from this entry."""
-    hass.data[DOMAIN]["mirror_dismiss_to"] = []
+    get_domain_data(hass)["mirror_dismiss_to"] = []
     return True
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload mirror_dismiss_to as soon as the options change via 'Configure'."""
-    hass.data[DOMAIN]["mirror_dismiss_to"] = entry.options.get(CONF_MIRROR_DISMISS_TO, [])
+    get_domain_data(hass)["mirror_dismiss_to"] = entry.options.get(CONF_MIRROR_DISMISS_TO, [])
 
 
-async def _async_ensure_core(hass: HomeAssistant, config: dict) -> None:
+async def _async_ensure_core(hass: HomeAssistant, config: ConfigType) -> None:
     """Set up the store, services, frontend, and sensor exactly once —
     idempotent, regardless of whether YAML or the config entry arrives first."""
     if DOMAIN in hass.data:
@@ -125,10 +144,11 @@ async def _async_ensure_core(hass: HomeAssistant, config: dict) -> None:
     store = NotifyDashboardStore(hass)
     await store.async_load()
 
-    hass.data[DOMAIN] = {
+    data: NotifyDashboardData = {
         "store": store,
         "mirror_dismiss_to": [],
     }
+    hass.data[DOMAIN] = data
 
     # Serve the card/badge JS from the integration itself.
     frontend_path = Path(__file__).parent / "frontend"
@@ -141,7 +161,7 @@ async def _async_ensure_core(hass: HomeAssistant, config: dict) -> None:
     # sometimes doesn't exist yet, which caused exactly the random
     # "Configuration error" behavior (a race condition, not consistently
     # reproducible).
-    async def _register_resource(_event=None) -> None:
+    async def _register_resource(_event: Event | None = None) -> None:
         await _async_register_lovelace_resource(hass)
 
     if hass.is_running:
@@ -166,13 +186,14 @@ async def _async_ensure_core(hass: HomeAssistant, config: dict) -> None:
                 f"'{item_id}' can't be dismissed — this notification is persistent"
             ) from err
 
-        if item.get("tag") and hass.data[DOMAIN]["mirror_dismiss_to"]:
-            await _async_mirror_clear(hass, item["tag"])
+        tag = item.get("tag")
+        if tag and get_domain_data(hass)["mirror_dismiss_to"]:
+            await _async_mirror_clear(hass, tag)
 
     async def handle_dismiss_all(call: ServiceCall) -> None:
         cleared = await store.async_dismiss_all_notifications()
-        if hass.data[DOMAIN]["mirror_dismiss_to"]:
-            tags = [item["tag"] for item in cleared if item.get("tag")]
+        if get_domain_data(hass)["mirror_dismiss_to"]:
+            tags = [tag for item in cleared if (tag := item.get("tag"))]
             await asyncio.gather(*(_async_mirror_clear(hass, tag) for tag in tags))
 
     async def handle_fire_action(call: ServiceCall) -> None:
@@ -261,5 +282,5 @@ async def _async_mirror_clear(hass: HomeAssistant, tag: str) -> None:
             _LOGGER.warning("Could not forward clear_notification to %s", entity_id)
 
     await asyncio.gather(
-        *(_clear_one(entity_id) for entity_id in hass.data[DOMAIN]["mirror_dismiss_to"])
+        *(_clear_one(entity_id) for entity_id in get_domain_data(hass)["mirror_dismiss_to"])
     )

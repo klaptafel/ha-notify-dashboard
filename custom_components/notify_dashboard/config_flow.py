@@ -8,8 +8,11 @@ section 1.1 / the HA architecture discussion #1041 about it).
 """
 from __future__ import annotations
 
+from typing import Any
+
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
@@ -36,7 +39,9 @@ class NotifyDashboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> "NotifyDashboardOptionsFlow":
         return NotifyDashboardOptionsFlow()
 
-    async def async_step_user(self, user_input: dict | None = None):
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         # One instance is enough — multiple config entries wouldn't add anything.
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
@@ -56,7 +61,9 @@ class NotifyDashboardOptionsFlow(config_entries.OptionsFlow):
     'property has no setter'.
     """
 
-    async def async_step_init(self, user_input: dict | None = None):
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 

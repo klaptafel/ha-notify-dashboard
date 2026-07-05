@@ -9,11 +9,16 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.components.notify import ATTR_DATA, ATTR_TITLE, BaseNotificationService
+from homeassistant.components.notify import (  # type: ignore[attr-defined]
+    ATTR_DATA,
+    ATTR_TITLE,
+    BaseNotificationService,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
-from .const import COMMAND_MESSAGES, DOMAIN
+from . import get_domain_data
+from .const import COMMAND_MESSAGES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,7 +39,7 @@ class DashboardNotificationService(BaseNotificationService):
         self.hass = hass
 
     async def async_send_message(self, message: str = "", **kwargs: Any) -> None:
-        store = self.hass.data[DOMAIN]["store"]
+        store = get_domain_data(self.hass)["store"]
         title = kwargs.get(ATTR_TITLE)
         data = kwargs.get(ATTR_DATA) or {}
 

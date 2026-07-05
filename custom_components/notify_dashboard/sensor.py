@@ -12,6 +12,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
+from . import get_domain_data
 from .const import DOMAIN, SIGNAL_UPDATE
 
 
@@ -43,7 +44,7 @@ class NotifyDashboardSensor(SensorEntity):
 
     @callback
     def _handle_update(self) -> None:
-        store = self.hass.data[DOMAIN]["store"]
+        store = get_domain_data(self.hass)["store"]
         data = store.data
         notifications = data["notifications"]
         live_activities = list(data["live_activities"].values())

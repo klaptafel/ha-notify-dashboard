@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import time
 import uuid
-from datetime import timedelta
-from typing import Any
+from datetime import datetime, timedelta
+from typing import Any, TypedDict
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
@@ -29,6 +29,38 @@ from .const import (
 )
 
 CLEANUP_INTERVAL = timedelta(seconds=15)
+
+
+class NotificationEntry(TypedDict):
+    """A single discrete notification, as stored and as sent to the sensor."""
+
+    id: str
+    tag: str | None
+    group: str | None
+    title: str | None
+    message: str
+    data: dict[str, Any]
+    created_at: float
+    updated_at: float
+    timeout: float | None
+
+
+class LiveActivityEntry(TypedDict):
+    """A live activity's current state, keyed by tag in the store."""
+
+    id: str
+    tag: str
+    title: str | None
+    message: str
+    data: dict[str, Any]
+    updated_at: float
+
+
+class NotifyDashboardStoreData(TypedDict):
+    """Shape persisted to/restored from the HA Store."""
+
+    notifications: list[NotificationEntry]
+    live_activities: dict[str, LiveActivityEntry]
 
 
 class NotificationNotFoundError(Exception):
@@ -50,12 +82,12 @@ class NotifyDashboardStore:
 
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass
-        self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
-        self._data: dict[str, Any] = {"notifications": [], "live_activities": {}}
-        self._unsub_periodic_cleanup = None
+        self._store: Store[NotifyDashboardStoreData] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        self._data: NotifyDashboardStoreData = {"notifications": [], "live_activities": {}}
+        self._unsub_periodic_cleanup: CALLBACK_TYPE | None = None
 
     @property
-    def data(self) -> dict[str, Any]:
+    def data(self) -> NotifyDashboardStoreData:
         return self._data
 
     async def async_load(self) -> None:
@@ -72,7 +104,7 @@ class NotifyDashboardStore:
         if self._unsub_periodic_cleanup is not None:
             return
 
-        async def _periodic(_now) -> None:
+        async def _periodic(_now: datetime) -> None:
             before = (len(self._data["notifications"]), len(self._data["live_activities"]))
             self._cleanup()
             after = (len(self._data["notifications"]), len(self._data["live_activities"]))
@@ -113,10 +145,12 @@ class NotifyDashboardStore:
             n for n in self._data["notifications"] if n.get("tag") != tag
         ]
 
-    async def async_add_notification(self, title: str | None, message: str, data: dict) -> None:
+    async def async_add_notification(
+        self, title: str | None, message: str, data: dict[str, Any]
+    ) -> None:
         tag = data.get("tag")
         now = time.time()
-        entry = {
+        entry: NotificationEntry = {
             "id": str(uuid.uuid4()),
             "tag": tag,
             "group": data.get("group"),
@@ -133,7 +167,9 @@ class NotifyDashboardStore:
         self._data["notifications"].insert(0, entry)
         await self._async_save()
 
-    async def async_upsert_live_activity(self, title: str | None, message: str, data: dict) -> None:
+    async def async_upsert_live_activity(
+        self, title: str | None, message: str, data: dict[str, Any]
+    ) -> None:
         tag = data.get("tag")
         if not tag:
             return  # Without a tag we can't track/update a live activity.
@@ -157,7 +193,7 @@ class NotifyDashboardStore:
         self._data["live_activities"].pop(tag, None)
         await self._async_save()
 
-    async def async_dismiss(self, item_id: str) -> dict:
+    async def async_dismiss(self, item_id: str) -> NotificationEntry | LiveActivityEntry:
         """Remove a notification or a live activity, based on id.
 
         For notifications, id is a uuid; for live activities, id equals the
@@ -183,7 +219,7 @@ class NotifyDashboardStore:
 
         raise NotificationNotFoundError(item_id)
 
-    async def async_dismiss_all_notifications(self) -> list[dict]:
+    async def async_dismiss_all_notifications(self) -> list[NotificationEntry]:
         """Remove all non-persistent notifications.
 
         Returns the removed items — same shape as async_dismiss — so the
