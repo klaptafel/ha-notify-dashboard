@@ -70,8 +70,10 @@ content:
   - live_activities
   - notifications
 group_order: live_first     # or: notifications_first / chronological
-filter_tags: []
-filter_groups: []
+filter_tags: []           # only show these tags (empty = all)
+filter_groups: []         # only show these groups (empty = all)
+filter_tags_exclude: []   # hide these tags, wins over filter_tags
+filter_groups_exclude: [] # hide these groups, wins over filter_groups
 max_items: 0                # 0 = no limit
 hide_when_empty: false
 default_icon: mdi:bell-outline

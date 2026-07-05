@@ -23,6 +23,8 @@ const CARD_DEFAULTS = {
   group_order: 'live_first', // or: notifications_first / chronological
   filter_tags: [],
   filter_groups: [],
+  filter_tags_exclude: [],
+  filter_groups_exclude: [],
   max_items: 0, // 0 = no limit
   hide_when_empty: false,
   default_icon: 'mdi:bell-outline',
@@ -229,9 +231,12 @@ const EDITOR_TRANSLATIONS = {
     group_order_chronological: 'Chronologisch (door elkaar)',
     max_items: 'Max. aantal items',
     max_items_desc: '0 = geen limiet',
-    filter_tags: 'Tags',
-    filter_groups: 'Groepen',
+    filter_tags: 'Tags (alleen deze tonen)',
+    filter_groups: 'Groepen (alleen deze tonen)',
+    filter_tags_exclude: 'Tags (verbergen)',
+    filter_groups_exclude: 'Groepen (verbergen)',
     filter_desc: 'Komma-gescheiden, leeg = alles',
+    filter_exclude_desc: 'Komma-gescheiden; wint van de lijst hierboven',
     hide_when_empty: 'Verberg kaart als leeg',
     default_icon: 'Standaardicoon',
     default_icon_desc: 'Gebruikt als een melding geen eigen icoon meegeeft',
@@ -239,6 +244,8 @@ const EDITOR_TRANSLATIONS = {
     default_icon_color_desc: 'CSS-kleur of var(--token)',
     confirm_dismiss: 'Bevestiging bij dismissen',
     show_open_action: 'Open-knop tonen',
+    show_open_action_desc:
+      'Toont een Open-knop op meldingen die een url meegeven; de knop opent die url',
   },
   en: {
     content_tab: 'Content',
@@ -261,9 +268,12 @@ const EDITOR_TRANSLATIONS = {
     group_order_chronological: 'Chronological (mixed)',
     max_items: 'Max. items',
     max_items_desc: '0 = no limit',
-    filter_tags: 'Tags',
-    filter_groups: 'Groups',
+    filter_tags: 'Tags (only show these)',
+    filter_groups: 'Groups (only show these)',
+    filter_tags_exclude: 'Tags (hide these)',
+    filter_groups_exclude: 'Groups (hide these)',
     filter_desc: 'Comma-separated, empty = all',
+    filter_exclude_desc: 'Comma-separated; wins over the list above',
     hide_when_empty: 'Hide card when empty',
     default_icon: 'Default icon',
     default_icon_desc: "Used when a notification doesn't have its own icon",
@@ -271,6 +281,8 @@ const EDITOR_TRANSLATIONS = {
     default_icon_color_desc: 'CSS color or var(--token)',
     confirm_dismiss: 'Confirm before dismissing',
     show_open_action: 'Show Open button',
+    show_open_action_desc:
+      'Shows an Open button on notifications that include a url; the button opens that url',
   },
 };
 
@@ -303,11 +315,15 @@ function mkIcon(icon, color) {
   return ico;
 }
 
-function matchesFilter(item, filterTags, filterGroups) {
+function matchesFilter(item, filterTags, filterGroups, excludeTags, excludeGroups) {
   const tag = item.tag ?? item.data?.tag;
   const group = item.group ?? item.data?.group;
   if (filterTags.length && !filterTags.includes(tag)) return false;
   if (filterGroups.length && !filterGroups.includes(group)) return false;
+  // Exclude wins over include — an explicit denylist entry should always
+  // hide the item, even if it also happens to match the include list.
+  if (excludeTags.length && excludeTags.includes(tag)) return false;
+  if (excludeGroups.length && excludeGroups.includes(group)) return false;
   return true;
 }
 
@@ -615,7 +631,14 @@ class NotifyDashboardCard extends HTMLElement {
   _collectItems() {
     const state = this._hass.states[this._entity];
     const attrs = state?.attributes || {};
-    const { filter_tags: filterTags, filter_groups: filterGroups, content, group_order: groupOrder } = this._config;
+    const {
+      filter_tags: filterTags,
+      filter_groups: filterGroups,
+      filter_tags_exclude: excludeTags,
+      filter_groups_exclude: excludeGroups,
+      content,
+      group_order: groupOrder,
+    } = this._config;
 
     const byNewest = (a, b) => (b.updated_at || b.created_at || 0) - (a.updated_at || a.created_at || 0);
     // chronological sorts the combined list again anyway — a per-kind sort
@@ -625,7 +648,7 @@ class NotifyDashboardCard extends HTMLElement {
     const collect = (key, kind) => {
       if (!content.includes(key)) return [];
       const arr = (attrs[key] || [])
-        .filter((n) => matchesFilter(n, filterTags, filterGroups))
+        .filter((n) => matchesFilter(n, filterTags, filterGroups, excludeTags, excludeGroups))
         .map((n) => ({ ...n, _kind: kind }));
       return sortPerKind ? arr.sort(byNewest) : arr;
     };
@@ -743,8 +766,21 @@ class NotifyDashboardCard extends HTMLElement {
     return 3;
   }
 
-  static getStubConfig() {
-    return { ...CARD_DEFAULTS, entity: 'sensor.notify_dashboard' };
+  getGridOptions() {
+    // Notification/activity lists vary a lot in height. Per HA's own docs,
+    // rows must be *omitted* (not set to a string like "auto") for a card
+    // to ignore the grid's row sizing and size to its actual content.
+    return { columns: 12 };
+  }
+
+  static getStubConfig(hass) {
+    // Prefer a real entity from this integration (matched via the entity
+    // registry's platform field, not a hardcoded id) so the card picker's
+    // live preview actually renders instead of showing "entity not found".
+    const match = hass?.entities
+      ? Object.entries(hass.entities).find(([, e]) => e.platform === 'notify_dashboard')
+      : null;
+    return { ...CARD_DEFAULTS, entity: match ? match[0] : 'sensor.notify_dashboard' };
   }
 
   static getConfigElement() {
@@ -797,14 +833,16 @@ class NotifyDashboardCardEditor extends HTMLElement {
   }
 
   _fire(config) {
+    // Deliberately no re-render here: every row in _renderContent /
+    // _renderFilter / _renderAppearance is unconditional (none of them
+    // show/hide or relabel based on another row's value), and each row's
+    // own widget already reflects what the user just typed/toggled. Doing
+    // a synchronous _renderTab() after every keystroke used to tear down
+    // and recreate the ha-form text inputs mid-typing, kicking focus out
+    // after every character.
     this._config = config;
     this._ownFire = true;
     this.dispatchEvent(new CustomEvent('config-changed', { detail: { config }, bubbles: true, composed: true }));
-  }
-
-  _fireAndRender(config) {
-    this._fire(config);
-    this._renderTab();
   }
 
   _init() {
@@ -866,7 +904,7 @@ class NotifyDashboardCardEditor extends HTMLElement {
     const sourceGroup = mk('div', 'settings-group');
     sourceGroup.appendChild(
       this._mkFormRow(uiTr.entity, null, { entity: { domain: 'sensor' } }, c.entity || 'sensor.notify_dashboard', (val) =>
-        this._fireAndRender({ ...c, entity: val })
+        this._fire({ ...c, entity: val })
       )
     );
     root.appendChild(sourceGroup);
@@ -875,12 +913,12 @@ class NotifyDashboardCardEditor extends HTMLElement {
     const contentGroup = mk('div', 'settings-group');
     contentGroup.appendChild(
       this._mkToggleRow(uiTr.live_activities, content.includes('live_activities'), null, (val) =>
-        this._fireAndRender({ ...c, content: toggleInArray(content, 'live_activities', val) })
+        this._fire({ ...c, content: toggleInArray(content, 'live_activities', val) })
       )
     );
     contentGroup.appendChild(
       this._mkToggleRow(uiTr.notifications, content.includes('notifications'), null, (val) =>
-        this._fireAndRender({ ...c, content: toggleInArray(content, 'notifications', val) })
+        this._fire({ ...c, content: toggleInArray(content, 'notifications', val) })
       )
     );
     contentGroup.appendChild(
@@ -889,7 +927,7 @@ class NotifyDashboardCardEditor extends HTMLElement {
         null,
         { select: { options: [{ value: 'single', label: uiTr.layout_single }, { value: 'split', label: uiTr.layout_split }] } },
         c.layout || 'single',
-        (val) => this._fireAndRender({ ...c, layout: val })
+        (val) => this._fire({ ...c, layout: val })
       )
     );
     contentGroup.appendChild(
@@ -906,7 +944,7 @@ class NotifyDashboardCardEditor extends HTMLElement {
           },
         },
         c.group_order || 'live_first',
-        (val) => this._fireAndRender({ ...c, group_order: val })
+        (val) => this._fire({ ...c, group_order: val })
       )
     );
     contentGroup.appendChild(
@@ -915,7 +953,7 @@ class NotifyDashboardCardEditor extends HTMLElement {
         uiTr.max_items_desc,
         { number: { min: 0, max: 100, step: 1, mode: 'box' } },
         c.max_items ?? 0,
-        (val) => this._fireAndRender({ ...c, max_items: Number(val) || 0 })
+        (val) => this._fire({ ...c, max_items: Number(val) || 0 })
       )
     );
     root.appendChild(contentGroup);
@@ -932,12 +970,30 @@ class NotifyDashboardCardEditor extends HTMLElement {
     const group = mk('div', 'settings-group');
     group.appendChild(
       this._mkFormRow(uiTr.filter_tags, uiTr.filter_desc, { text: {} }, (c.filter_tags || []).join(', '), (val) =>
-        this._fireAndRender({ ...c, filter_tags: splitCsv(val) })
+        this._fire({ ...c, filter_tags: splitCsv(val) })
+      )
+    );
+    group.appendChild(
+      this._mkFormRow(
+        uiTr.filter_tags_exclude,
+        uiTr.filter_exclude_desc,
+        { text: {} },
+        (c.filter_tags_exclude || []).join(', '),
+        (val) => this._fire({ ...c, filter_tags_exclude: splitCsv(val) })
       )
     );
     group.appendChild(
       this._mkFormRow(uiTr.filter_groups, uiTr.filter_desc, { text: {} }, (c.filter_groups || []).join(', '), (val) =>
-        this._fireAndRender({ ...c, filter_groups: splitCsv(val) })
+        this._fire({ ...c, filter_groups: splitCsv(val) })
+      )
+    );
+    group.appendChild(
+      this._mkFormRow(
+        uiTr.filter_groups_exclude,
+        uiTr.filter_exclude_desc,
+        { text: {} },
+        (c.filter_groups_exclude || []).join(', '),
+        (val) => this._fire({ ...c, filter_groups_exclude: splitCsv(val) })
       )
     );
     root.appendChild(group);
@@ -954,7 +1010,7 @@ class NotifyDashboardCardEditor extends HTMLElement {
     const group = mk('div', 'settings-group');
     group.appendChild(
       this._mkToggleRow(uiTr.hide_when_empty, !!c.hide_when_empty, null, (val) =>
-        this._fireAndRender({ ...c, hide_when_empty: val })
+        this._fire({ ...c, hide_when_empty: val })
       )
     );
     group.appendChild(
@@ -963,7 +1019,7 @@ class NotifyDashboardCardEditor extends HTMLElement {
         uiTr.default_icon_desc,
         { icon: {} },
         c.default_icon || 'mdi:bell-outline',
-        (val) => this._fireAndRender({ ...c, default_icon: val })
+        (val) => this._fire({ ...c, default_icon: val })
       )
     );
     group.appendChild(
@@ -972,7 +1028,7 @@ class NotifyDashboardCardEditor extends HTMLElement {
         uiTr.default_icon_color_desc,
         { text: {} },
         c.default_icon_color || 'var(--primary-color)',
-        (val) => this._fireAndRender({ ...c, default_icon_color: val })
+        (val) => this._fire({ ...c, default_icon_color: val })
       )
     );
     root.appendChild(group);
@@ -981,12 +1037,12 @@ class NotifyDashboardCardEditor extends HTMLElement {
     const behavGroup = mk('div', 'settings-group');
     behavGroup.appendChild(
       this._mkToggleRow(uiTr.confirm_dismiss, !!c.confirm_dismiss, null, (val) =>
-        this._fireAndRender({ ...c, confirm_dismiss: val })
+        this._fire({ ...c, confirm_dismiss: val })
       )
     );
     behavGroup.appendChild(
-      this._mkToggleRow(uiTr.show_open_action, c.show_open_action !== false, null, (val) =>
-        this._fireAndRender({ ...c, show_open_action: val })
+      this._mkToggleRow(uiTr.show_open_action, c.show_open_action !== false, uiTr.show_open_action_desc, (val) =>
+        this._fire({ ...c, show_open_action: val })
       )
     );
     root.appendChild(behavGroup);
@@ -1043,6 +1099,12 @@ if (!customElements.get('notify-dashboard-card')) {
     name: 'Notify Dashboard Card',
     description: 'Displays notifications and live activities sent via notify.dashboard.',
     preview: true,
+    documentationURL: 'https://github.com/klaptafel/ha-notify-dashboard',
     version: CARD_VERSION,
+    getEntitySuggestion: (hass, entityId) => {
+      const entry = hass?.entities?.[entityId];
+      if (!entry || entry.platform !== 'notify_dashboard') return null;
+      return { config: { type: 'custom:notify-dashboard-card', entity: entityId } };
+    },
   });
 }
