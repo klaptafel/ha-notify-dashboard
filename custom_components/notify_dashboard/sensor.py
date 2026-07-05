@@ -1,7 +1,8 @@
-"""Sensor die de notify_dashboard-data blootstelt aan de frontend-card.
+"""Sensor that exposes the notify_dashboard data to the frontend card.
 
-De card leest deze entity's attributen (notifications / live_activities).
-Update reactief via dispatcher-signal zodra de store wijzigt — geen polling.
+The card reads this entity's attributes (notifications / live_activities).
+Updates reactively via a dispatcher signal as soon as the store changes —
+no polling.
 """
 from __future__ import annotations
 

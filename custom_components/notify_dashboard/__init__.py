@@ -1,15 +1,15 @@
 """The Notify Dashboard integration.
 
-Twee onafhankelijke setup-paden komen hier samen:
-- YAML (`notify_dashboard:` config-key) — nog steeds ondersteund voor wie
-  liever alles in YAML houdt, en voor de verplichte `notify: - platform:
-  notify_dashboard`-regel (die kan sowieso niet via een config entry, zie
-  config_flow.py).
-- Config entry (via de UI toegevoegd) — regelt alleen `mirror_dismiss_to`,
-  aanpasbaar via "Configureren" zonder herstart.
+Two independent setup paths come together here:
+- YAML (`notify_dashboard:` config key) — still supported for anyone who
+  prefers to keep everything in YAML, and for the mandatory `notify: -
+  platform: notify_dashboard` line (which can't go through a config entry
+  anyway, see config_flow.py).
+- Config entry (added via the UI) — only handles `mirror_dismiss_to`,
+  adjustable via "Configure" without a restart.
 
-De kern (store, services, frontend, sensor) wordt maar één keer opgezet,
-ongeacht welk pad als eerste langskomt.
+The core (store, services, frontend, sensor) is only ever set up once,
+regardless of which path comes first.
 """
 from __future__ import annotations
 
@@ -75,16 +75,16 @@ FIRE_ACTION_SCHEMA = vol.Schema(
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Set up via YAML (`notify_dashboard:` key) — optioneel."""
+    """Set up via YAML (`notify_dashboard:` key) — optional."""
     await _async_ensure_core(hass, config)
 
     yaml_conf = config.get(DOMAIN, {})
     if yaml_conf:
         if hass.config_entries.async_entries(DOMAIN):
             _LOGGER.warning(
-                "Zowel de YAML-sleutel 'notify_dashboard:' als een config entry "
-                "gevonden — de instellingen via 'Configureren' in de UI hebben "
-                "voorrang. Verwijder de YAML-sleutel om deze waarschuwing kwijt te raken."
+                "Found both the YAML key 'notify_dashboard:' and a config "
+                "entry — the settings from 'Configure' in the UI take "
+                "precedence. Remove the YAML key to get rid of this warning."
             )
         else:
             hass.data[DOMAIN]["mirror_dismiss_to"] = yaml_conf.get(CONF_MIRROR_DISMISS_TO, [])
@@ -93,7 +93,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up via de UI (config entry) — regelt mirror_dismiss_to."""
+    """Set up via the UI (config entry) — handles mirror_dismiss_to."""
     await _async_ensure_core(hass, {})
 
     hass.data[DOMAIN]["mirror_dismiss_to"] = entry.options.get(CONF_MIRROR_DISMISS_TO, [])
@@ -103,21 +103,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Config entry verwijderen — de kern (store/services/frontend) blijft staan
-    zolang de YAML-platform-regel (`notify: - platform: notify_dashboard`)
-    nog actief is; die kan niet los van deze entry worden opgeruimd."""
+    """Remove the config entry — the core (store/services/frontend) stays in
+    place as long as the YAML platform line (`notify: - platform:
+    notify_dashboard`) is still active; that can't be cleaned up separately
+    from this entry."""
     hass.data[DOMAIN]["mirror_dismiss_to"] = []
     return True
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Herlaad mirror_dismiss_to zodra de opties via 'Configureren' wijzigen."""
+    """Reload mirror_dismiss_to as soon as the options change via 'Configure'."""
     hass.data[DOMAIN]["mirror_dismiss_to"] = entry.options.get(CONF_MIRROR_DISMISS_TO, [])
 
 
 async def _async_ensure_core(hass: HomeAssistant, config: dict) -> None:
-    """Zet store, services, frontend en sensor eenmalig op — idempotent,
-    ongeacht of YAML of de config entry als eerste binnenkomt."""
+    """Set up the store, services, frontend, and sensor exactly once —
+    idempotent, regardless of whether YAML or the config entry arrives first."""
     if DOMAIN in hass.data:
         return
 
@@ -129,16 +130,17 @@ async def _async_ensure_core(hass: HomeAssistant, config: dict) -> None:
         "mirror_dismiss_to": [],
     }
 
-    # Serveer de card/badge-JS vanuit de integratie zelf.
+    # Serve the card/badge JS from the integration itself.
     frontend_path = Path(__file__).parent / "frontend"
     await hass.http.async_register_static_paths(
         [StaticPathConfig(FRONTEND_URL_BASE, str(frontend_path), cache_headers=False)]
     )
 
-    # Wachten tot HA volledig is opgestart voordat we de Lovelace-resource
-    # registreren — anders bestaat hass.data["lovelace"] (storage-collectie)
-    # soms nog niet, en dat gaf precies het willekeurige "Configuration
-    # error"-gedrag (race condition, niet consistent reproduceerbaar).
+    # Wait until HA is fully started before registering the Lovelace
+    # resource — otherwise hass.data["lovelace"] (the storage collection)
+    # sometimes doesn't exist yet, which caused exactly the random
+    # "Configuration error" behavior (a race condition, not consistently
+    # reproducible).
     async def _register_resource(_event=None) -> None:
         await _async_register_lovelace_resource(hass)
 
@@ -157,11 +159,11 @@ async def _async_ensure_core(hass: HomeAssistant, config: dict) -> None:
             item = await store.async_dismiss(item_id)
         except NotificationNotFoundError as err:
             raise ServiceValidationError(
-                f"Geen melding gevonden met id '{item_id}'"
+                f"No notification found with id '{item_id}'"
             ) from err
         except NotificationNotDismissableError as err:
             raise ServiceValidationError(
-                f"'{item_id}' kan niet gedismissed worden — deze notification is persistent"
+                f"'{item_id}' can't be dismissed — this notification is persistent"
             ) from err
 
         if item.get("tag") and hass.data[DOMAIN]["mirror_dismiss_to"]:
@@ -174,11 +176,11 @@ async def _async_ensure_core(hass: HomeAssistant, config: dict) -> None:
             await asyncio.gather(*(_async_mirror_clear(hass, tag) for tag in tags))
 
     async def handle_fire_action(call: ServiceCall) -> None:
-        # Vuurt hass.bus.async_fire server-side af i.p.v. de card zelf de
-        # fire_event websocket-actie te laten aanroepen — die vereist
-        # @require_admin in HA core, dus zou voor niet-admin dashboardgebruikers
-        # (bv. een kiosk-tablet met een beperkt account) stil falen. Een gewone
-        # service-aanroep zoals deze heeft die beperking niet.
+        # Fires hass.bus.async_fire server-side instead of letting the card
+        # itself call the fire_event websocket action — that one requires
+        # @require_admin in HA core, so it would silently fail for non-admin
+        # dashboard viewers (e.g. a kiosk tablet on a restricted account). A
+        # regular service call like this one doesn't have that restriction.
         event_data = {ATTR_ACTION: call.data[ATTR_ACTION]}
         if ATTR_TAG in call.data:
             event_data[ATTR_TAG] = call.data[ATTR_TAG]
@@ -194,22 +196,22 @@ async def _async_ensure_core(hass: HomeAssistant, config: dict) -> None:
 
 
 async def _async_register_lovelace_resource(hass: HomeAssistant) -> None:
-    """Registreer de card als een echte Lovelace-resource (storage mode).
+    """Register the card as a real Lovelace resource (storage mode).
 
-    De URL bevat een `?v=<integratie-versie>` cache-buster: zonder dat blijft
-    de browser (of een service worker) na elke update de oude JS gebruiken,
-    zoals bleek toen een allang gefixte regel toch nog "oud" gedrag leek te
-    vertonen. Bij een versiewijziging wordt de bestaande resource bijgewerkt
-    in plaats van een duplicaat aan te maken.
+    The URL includes a `?v=<integration-version>` cache buster: without it
+    the browser (or a service worker) keeps using the old JS after every
+    update, as happened when a long-fixed bug still seemed to show "old"
+    behavior. On a version change, the existing resource gets updated
+    instead of creating a duplicate.
 
-    LET OP — er is een open core-bug (home-assistant/core#165767, gemeld
-    maart 2026): als een integratie resources.async_create_item() aanroept
-    vóórdat de bestaande resources zijn geladen, overschrijft dat de hele
-    opgeslagen resource-lijst met alleen het nieuwe item — dus alle andere
-    resources van de gebruiker gaan verloren. We voorkomen dit expliciet
-    door zelf eerst async_load() aan te roepen (exact de fix die in het
-    issue zelf wordt voorgesteld), zodat de bestaande data al in geheugen
-    staat vóórdat we iets toevoegen.
+    NOTE — there is an open core bug (home-assistant/core#165767, reported
+    March 2026): if an integration calls resources.async_create_item()
+    before the existing resources have been loaded, that overwrites the
+    entire stored resource list with just the new item — so all of the
+    user's other resources are lost. We explicitly prevent this by calling
+    async_load() ourselves first (exactly the fix suggested in the issue
+    itself), so the existing data is already in memory before we add
+    anything.
     """
     integration = await async_get_integration(hass, DOMAIN)
     base_path = f"{FRONTEND_URL_BASE}/notify-dashboard-card.js"
@@ -217,13 +219,13 @@ async def _async_register_lovelace_resource(hass: HomeAssistant) -> None:
 
     lovelace_data = hass.data.get("lovelace")
     if not lovelace_data or getattr(lovelace_data, "resource_mode", None) != "storage":
-        # YAML-mode dashboards hebben geen storage-resources-collectie —
-        # daar blijft add_extra_js_url de enige optie.
+        # YAML-mode dashboards don't have a storage resources collection —
+        # add_extra_js_url remains the only option there.
         frontend.add_extra_js_url(hass, url)
         return
 
     resources = lovelace_data.resources
-    await resources.async_load()  # veiligheidsnet tegen core#165767
+    await resources.async_load()  # safety net against core#165767
 
     existing = next(
         (item for item in resources.async_items() if item["url"].split("?")[0] == base_path),
@@ -236,14 +238,14 @@ async def _async_register_lovelace_resource(hass: HomeAssistant) -> None:
 
 
 async def _async_mirror_clear(hass: HomeAssistant, tag: str) -> None:
-    """Stuur clear_notification door naar de mirror_dismiss_to-targets.
+    """Send clear_notification to the mirror_dismiss_to targets.
 
-    Gebruikt de generieke `notify.send_message`-actie met de gekozen entity
-    als target, niet een losse service per entity-naam — moderne notify-
-    entities (zoals de companion-app die tegenwoordig gebruikt) draaien
-    via dat ene gedeelde endpoint, niet via een eigen service per apparaat.
-    Targets zijn onafhankelijk van elkaar, dus parallel afvuren i.p.v. op
-    elkaar te wachten.
+    Uses the generic `notify.send_message` action with the chosen entity as
+    the target, not a separate service per entity name — modern notify
+    entities (like the one the companion app uses these days) run through
+    that one shared endpoint, not through their own service per device.
+    Targets are independent of each other, so fire them in parallel instead
+    of waiting on each one in turn.
     """
 
     async def _clear_one(entity_id: str) -> None:
@@ -256,7 +258,7 @@ async def _async_mirror_clear(hass: HomeAssistant, tag: str) -> None:
                 blocking=False,
             )
         except Exception:  # noqa: BLE001
-            _LOGGER.warning("Kon clear_notification niet doorsturen naar %s", entity_id)
+            _LOGGER.warning("Could not forward clear_notification to %s", entity_id)
 
     await asyncio.gather(
         *(_clear_one(entity_id) for entity_id in hass.data[DOMAIN]["mirror_dismiss_to"])

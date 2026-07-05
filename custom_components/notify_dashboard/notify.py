@@ -1,7 +1,8 @@
 """Notify platform for Notify Dashboard.
 
-Legacy BaseNotificationService — bewust niet de moderne NotifyEntity, want
-die ondersteunt geen `data`/`tag`/`target` (zie ontwerpdocument, sectie 1.1).
+Legacy BaseNotificationService — deliberately not the modern NotifyEntity,
+since that one doesn't support `data`/`tag`/`target` (see design doc,
+section 1.1).
 """
 from __future__ import annotations
 
@@ -27,7 +28,7 @@ async def async_get_service(
 
 
 class DashboardNotificationService(BaseNotificationService):
-    """Routeert notify.dashboard-aanroepen naar de notify_dashboard store."""
+    """Routes notify.dashboard calls to the notify_dashboard store."""
 
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass
@@ -37,14 +38,14 @@ class DashboardNotificationService(BaseNotificationService):
         title = kwargs.get(ATTR_TITLE)
         data = kwargs.get(ATTR_DATA) or {}
 
-        # Commando-berichten zijn instructies, geen content — nooit opslaan.
+        # Command messages are instructions, not content — never store them.
         if message in COMMAND_MESSAGES:
             if message == "clear_notification":
                 tag = data.get("tag")
                 if tag:
                     await store.async_clear_by_tag(tag)
             else:
-                _LOGGER.debug("Commando-bericht '%s' genegeerd (telefoon-specifiek)", message)
+                _LOGGER.debug("Ignored command message '%s' (phone-specific)", message)
             return
 
         if data.get("live_update"):

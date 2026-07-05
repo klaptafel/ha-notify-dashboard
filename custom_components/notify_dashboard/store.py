@@ -1,11 +1,11 @@
 """Persistent storage for Notify Dashboard.
 
-Houdt twee collecties bij (zie ontwerpdocument):
-- notifications: discrete meldingen, tag-replace = volledige vervanging,
-  verlopen na eigen `timeout` of anders na MAX_AGE_DAYS, hard capped op
+Keeps two collections (see design doc):
+- notifications: discrete alerts, tag-replace = full replacement, expire
+  after their own `timeout` or otherwise after MAX_AGE_DAYS, hard capped at
   MAX_NOTIFICATIONS.
-- live_activities: keyed op tag, altijd 1 actuele state, verlopen na
-  LIVE_ACTIVITY_STALE_HOURS zonder update (schuift op bij elke update).
+- live_activities: keyed by tag, always 1 current state, expires after
+  LIVE_ACTIVITY_STALE_HOURS without an update (pushed back on every update).
 """
 from __future__ import annotations
 
@@ -32,16 +32,16 @@ CLEANUP_INTERVAL = timedelta(seconds=15)
 
 
 class NotificationNotFoundError(Exception):
-    """Geen notification of live activity met dit id gevonden."""
+    """No notification or live activity found with this id."""
 
 
 class NotificationNotDismissableError(Exception):
-    """Item bestaat, maar mag niet handmatig gedismissed worden.
+    """Item exists, but may not be dismissed manually.
 
-    Geldt uitsluitend voor persistent-gemarkeerde notifications. Live
-    activities zijn wél gewoon dismissable via deze weg (zelfde sluiten-knop
-    als een normale notification) — dat is een bewuste keuze, los van hoe
-    clear_notification/progress: -1 losstaand ook al voor beëindiging zorgen.
+    Applies only to persistent-marked notifications. Live activities ARE
+    dismissable this way (same close button as a regular notification) —
+    that's a deliberate choice, separate from how clear_notification/
+    progress: -1 already handle ending them on their own.
     """
 
 
@@ -66,9 +66,9 @@ class NotifyDashboardStore:
         self._start_periodic_cleanup()
 
     def _start_periodic_cleanup(self) -> None:
-        """Ruimt verlopen items op zonder dat daar een schrijfactie voor nodig
-        is — anders blijft een verlopen melding gewoon zichtbaar staan tot
-        er toevallig weer iets anders wordt opgeslagen."""
+        """Cleans up expired items without needing a write for it —
+        otherwise an expired notification would just stay visible until
+        something else happens to get saved."""
         if self._unsub_periodic_cleanup is not None:
             return
 
@@ -88,7 +88,7 @@ class NotifyDashboardStore:
         async_dispatcher_send(self.hass, SIGNAL_UPDATE)
 
     def _cleanup(self) -> None:
-        """Verwijder verlopen notifications en stale live activities."""
+        """Remove expired notifications and stale live activities."""
         now = time.time()
         max_age = MAX_AGE_DAYS * 86400
         stale_after = LIVE_ACTIVITY_STALE_HOURS * 3600
@@ -99,8 +99,8 @@ class NotifyDashboardStore:
             expires_at = item["created_at"] + timeout if timeout else item["created_at"] + max_age
             if now < expires_at:
                 kept.append(item)
-        # Al nieuwste-eerst (insert(0, ...) bij toevoegen) — geen resort nodig.
-        # Hard plafond — oudste eruit, ongeacht leeftijd (spam-vangnet).
+        # Already newest-first (insert(0, ...) on add) — no resort needed.
+        # Hard ceiling — oldest goes first, regardless of age (spam safety net).
         self._data["notifications"] = kept[:MAX_NOTIFICATIONS]
 
         live = self._data["live_activities"]
@@ -128,7 +128,7 @@ class NotifyDashboardStore:
             "timeout": data.get("timeout"),
         }
         if tag:
-            # Tag-replace = volledige vervanging, geen veld-merge (optie 1).
+            # Tag-replace = full replacement, no field merge (option 1).
             self._remove_notifications_by_tag(tag)
         self._data["notifications"].insert(0, entry)
         await self._async_save()
@@ -136,9 +136,9 @@ class NotifyDashboardStore:
     async def async_upsert_live_activity(self, title: str | None, message: str, data: dict) -> None:
         tag = data.get("tag")
         if not tag:
-            return  # Zonder tag kunnen we geen live activity bijhouden/updaten.
+            return  # Without a tag we can't track/update a live activity.
         now = time.time()
-        # progress: -1 = expliciet "klaar"-signaal, zelfde effect als clear_notification.
+        # progress: -1 = explicit "done" signal, same effect as clear_notification.
         if data.get("progress") == -1:
             self._data["live_activities"].pop(tag, None)
         else:
@@ -158,13 +158,14 @@ class NotifyDashboardStore:
         await self._async_save()
 
     async def async_dismiss(self, item_id: str) -> dict:
-        """Verwijder een notification óf een live activity, op basis van id.
+        """Remove a notification or a live activity, based on id.
 
-        Voor notifications is id een uuid; voor live activities is id gelijk
-        aan de tag. Persistent-gemarkeerde notifications kunnen niet
-        gedismissed worden (NotificationNotDismissableError); een onbekend id
-        geeft NotificationNotFoundError — de aanroeper (de dismiss-service)
-        vertaalt dat naar een duidelijke foutmelding i.p.v. stil niets te doen.
+        For notifications, id is a uuid; for live activities, id equals the
+        tag. Persistent-marked notifications can't be dismissed
+        (NotificationNotDismissableError); an unknown id raises
+        NotificationNotFoundError — the caller (the dismiss service)
+        translates that into a clear error message instead of silently
+        doing nothing.
         """
         notifications = self._data["notifications"]
         match = next((n for n in notifications if n["id"] == item_id), None)
@@ -183,11 +184,11 @@ class NotifyDashboardStore:
         raise NotificationNotFoundError(item_id)
 
     async def async_dismiss_all_notifications(self) -> list[dict]:
-        """Verwijder alle non-persistent notifications.
+        """Remove all non-persistent notifications.
 
-        Geeft de verwijderde items terug — zelfde vorm als async_dismiss —
-        zodat de aanroeper mirror_dismiss_to hierop kan toepassen net als bij
-        een losse dismiss, nu ook voor de bulk-variant.
+        Returns the removed items — same shape as async_dismiss — so the
+        caller can apply mirror_dismiss_to to them just like a single
+        dismiss, now for the bulk variant too.
         """
         kept = []
         cleared = []

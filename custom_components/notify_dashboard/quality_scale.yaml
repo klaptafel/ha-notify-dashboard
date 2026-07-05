@@ -7,22 +7,21 @@ rules:
   action-setup:
     status: done
     comment: >
-      Services worden geregistreerd in _async_ensure_core, aangeroepen vanuit
-      async_setup. HA's bootstrap roept voor een domain altijd eerst
-      async_setup aan (ook met lege config) vóórdat config entries voor
-      datzelfde domain worden opgezet, dus dit gebeurt in de praktijk altijd
-      via async_setup — ook wanneer alleen een config entry aanwezig is en
-      geen YAML.
+      Services are registered in _async_ensure_core, called from async_setup.
+      HA's bootstrap always calls async_setup for a domain first (even with
+      an empty config) before setting up config entries for that same
+      domain, so in practice this always happens via async_setup — even
+      when only a config entry is present and no YAML.
   runtime-data:
     status: exempt
     comment: >
-      Kan niet volledig: het legacy notify-platform (notify.py) ontvangt
-      geen ConfigEntry-object van HA (BaseNotificationService.async_get_service
-      krijgt alleen hass/config), dus die code kan entry.runtime_data
-      structureel niet bereiken. hass.data[DOMAIN] blijft daarom de
-      canonieke opslagplek; dit is een architecturale beperking van het
-      legacy notify-platform zelf, niet een keuze die we hier kunnen
-      oplossen zonder de YAML-only notify.dashboard-service op te geven.
+      Can't be done fully: the legacy notify platform (notify.py) doesn't
+      receive a ConfigEntry object from HA (BaseNotificationService.
+      async_get_service only gets hass/config), so that code structurally
+      can't reach entry.runtime_data. hass.data[DOMAIN] therefore stays the
+      canonical storage location; this is an architectural limitation of the
+      legacy notify platform itself, not a choice we can resolve here without
+      giving up the YAML-only notify.dashboard service.
   has-entity-name: done
   common-modules: done
   dependency-transparency: done
@@ -32,51 +31,51 @@ rules:
   docs-actions: done
   docs-triggers:
     status: exempt
-    comment: Geen triggers geleverd door deze integratie.
+    comment: This integration doesn't provide any triggers.
   docs-conditions:
     status: exempt
-    comment: Geen condities geleverd door deze integratie.
+    comment: This integration doesn't provide any conditions.
   brands:
     status: todo
     comment: >
-      Nog geen brand-assets aangeleverd bij home-assistant/brands. Mapstructuur
-      staat al klaar in brand/ (zie brand/README.md) — alleen de daadwerkelijke
-      icon/logo-bestanden en de PR daarnaartoe ontbreken nog.
+      No brand assets submitted to home-assistant/brands yet. The folder
+      structure is already staged in brand/ (see brand/README.md) — only the
+      actual icon/logo files and the PR to that repo are still missing.
   config-flow-test-coverage:
     status: todo
-    comment: Geen geautomatiseerde tests aanwezig — bewuste keuze voor deze persoonlijke repo, geen kern-inclusie beoogd.
+    comment: No automated tests present — a deliberate choice for this personal repo, not intended for core inclusion.
   test-before-setup:
     status: exempt
-    comment: Geen extern apparaat/verbinding om te valideren; de integratie heeft geen faalbare "connectie".
+    comment: No external device/connection to validate; the integration has no failable "connection".
   appropriate-polling:
     status: exempt
-    comment: Push-based via notify-aanroepen en een dispatcher-signal, geen polling.
+    comment: Push-based via notify calls and a dispatcher signal, no polling.
 
   # Silver
   action-exceptions:
     status: done
     comment: >
-      dismiss raist ServiceValidationError bij een onbekend id
-      (NotificationNotFoundError) en bij een persistent-gemarkeerde
-      notification (NotificationNotDismissableError) — i.p.v. stil te falen.
+      dismiss raises ServiceValidationError for an unknown id
+      (NotificationNotFoundError) and for a persistent-marked notification
+      (NotificationNotDismissableError) — instead of silently failing.
   config-entry-unloading: done
   integration-owner: done
   docs-configuration-parameters: done
   docs-installation-parameters:
     status: exempt
-    comment: Installatie vereist geen parameters (geen host/token/device-keuze).
+    comment: Installation requires no parameters (no host/token/device selection).
   parallel-updates:
     status: exempt
-    comment: Geen coordinator/polling-entities.
+    comment: No coordinator/polling entities.
   entity-unavailable:
     status: exempt
-    comment: Geen externe verbinding die kan wegvallen.
+    comment: No external connection that can drop.
   log-when-unavailable:
     status: exempt
-    comment: Zelfde reden als entity-unavailable.
+    comment: Same reason as entity-unavailable.
   reauthentication-flow:
     status: exempt
-    comment: Geen authenticatie nodig.
+    comment: No authentication needed.
   test-coverage:
     status: todo
-    comment: Zelfde reden als config-flow-test-coverage.
+    comment: Same reason as config-flow-test-coverage.

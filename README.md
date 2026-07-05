@@ -52,7 +52,7 @@ notify:
 
 No manual Lovelace resource needed — the integration registers the card's JS itself as soon as it's set up.
 
-Edit a dashboard → **Add card** → **Manual**, then paste:
+Edit a dashboard → **Add card** → search for "Notify Dashboard" to use the visual editor (Inhoud / Filter / Weergave tabs), or pick **Manual** and paste YAML directly:
 
 **Minimal:**
 
@@ -160,6 +160,5 @@ Stored data lives in `.storage/notify_dashboard.notifications` — delete that f
 
 ## Roadmap
 
-- Visual card editor (YAML-only for now)
 - `image`, `icon_url`, `alert_once`, `subtitle`/`subject`, `color`, `critical_text`, `progress_indeterminate`
 - `notify-dashboard-badge` for a count badge in a Sections dashboard header

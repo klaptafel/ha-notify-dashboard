@@ -3,14 +3,14 @@
     "step": {
       "user": {
         "title": "Notify Dashboard",
-        "description": "Instellen van notify.dashboard vereist nog steeds een `notify:` YAML-regel (zie README) — dit scherm regelt alleen de optionele instellingen hieronder.",
+        "description": "Setting up notify.dashboard still requires a `notify:` YAML entry (see README) — this screen only configures the optional settings below.",
         "data": {
-          "mirror_dismiss_to": "Ook clear_notification doorsturen naar"
+          "mirror_dismiss_to": "Also forward clear_notification to"
         }
       }
     },
     "abort": {
-      "single_instance_allowed": "Notify Dashboard is al geconfigureerd."
+      "single_instance_allowed": "Notify Dashboard is already configured."
     }
   },
   "entity": {
@@ -23,9 +23,9 @@
   "options": {
     "step": {
       "init": {
-        "title": "Notify Dashboard instellingen",
+        "title": "Notify Dashboard settings",
         "data": {
-          "mirror_dismiss_to": "Ook clear_notification doorsturen naar"
+          "mirror_dismiss_to": "Also forward clear_notification to"
         }
       }
     }

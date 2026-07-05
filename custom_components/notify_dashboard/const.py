@@ -4,20 +4,20 @@ DOMAIN = "notify_dashboard"
 
 # Config
 CONF_MIRROR_DISMISS_TO = "mirror_dismiss_to"
-# Enige entity-domain toegestaan voor mirror_dismiss_to — gedeeld tussen de
-# YAML-validatie (__init__.py) en de UI-selector (config_flow.py).
+# Only entity domain allowed for mirror_dismiss_to — shared between the
+# YAML validation (__init__.py) and the UI selector (config_flow.py).
 NOTIFY_ENTITY_DOMAIN = "notify"
 
 # Storage
 STORAGE_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}.notifications"
 
-# Retentie (zie ontwerpdocument, punt 7)
+# Retention (see design doc, point 7)
 MAX_NOTIFICATIONS = 100
 MAX_AGE_DAYS = 30
 LIVE_ACTIVITY_STALE_HOURS = 8
 
-# Commando-berichten die nooit als content getoond mogen worden
+# Command messages that must never be shown as content
 COMMAND_MESSAGES = {"clear_notification", "TTS", "delete_alert", "remove_channel"}
 
 # Events / signals

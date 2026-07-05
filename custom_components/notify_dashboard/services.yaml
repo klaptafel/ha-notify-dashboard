@@ -1,8 +1,8 @@
 dismiss:
   name: Dismiss
   description: >-
-    Verwijder een melding of live activity uit notify.dashboard (op id). Werkt
-    niet op persistent-gemarkeerde meldingen.
+    Remove a notification or live activity from notify.dashboard (by id).
+    Doesn't work on persistent-marked notifications.
   fields:
     id:
       required: true
@@ -12,15 +12,15 @@ dismiss:
 
 dismiss_all:
   name: Dismiss all
-  description: Verwijder alle notificaties (behalve persistent-gemarkeerde).
+  description: Remove all notifications (except persistent-marked ones).
 
 fire_action:
   name: Fire action
   description: >-
-    Vuurt een mobile_app_notification_action-event af (zelfde vorm als de
-    companion-app). Wordt intern gebruikt door de card bij een actie-tap —
-    los, admin-onafhankelijk endpoint i.p.v. de fire_event websocket-actie,
-    die alleen door admin-gebruikers aangeroepen mag worden.
+    Fires a mobile_app_notification_action event (same shape as the
+    companion app). Used internally by the card on an action tap — a
+    separate, admin-independent endpoint instead of the fire_event
+    websocket command, which only admin users are allowed to call.
   fields:
     action:
       required: true

@@ -1,10 +1,10 @@
 """Config flow for Notify Dashboard.
 
-Regelt alleen de integratie-config (mirror_dismiss_to) via de UI. De
-`notify.dashboard`-service zelf blijft via YAML lopen (`notify: - platform:
-notify_dashboard`) — dat is een beperking van het legacy notify-platform
-zelf, niet iets wat via een config entry op te lossen is (zie ontwerpdocument
-sectie 1.1 / de HA architecture-discussie #1041 daarover).
+Only handles the integration config (mirror_dismiss_to) via the UI. The
+`notify.dashboard` service itself keeps running through YAML (`notify: -
+platform: notify_dashboard`) — that's a limitation of the legacy notify
+platform itself, not something a config entry can fix (see design doc
+section 1.1 / the HA architecture discussion #1041 about it).
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ class NotifyDashboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return NotifyDashboardOptionsFlow()
 
     async def async_step_user(self, user_input: dict | None = None):
-        # Eén instantie is genoeg — meerdere config entries voegen niets toe.
+        # One instance is enough — multiple config entries wouldn't add anything.
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
 
@@ -48,11 +48,11 @@ class NotifyDashboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class NotifyDashboardOptionsFlow(config_entries.OptionsFlow):
-    """Laat mirror_dismiss_to later aanpassen via 'Configureren'.
+    """Lets mirror_dismiss_to be changed later via 'Configure'.
 
-    Let op: geen eigen __init__ die self.config_entry zet — recente HA-versies
-    maken dat een read-only property die de config_entries-module zelf al
-    invult vóór async_step_init wordt aangeroepen. Zelf toewijzen geeft
+    Note: no own __init__ that sets self.config_entry — recent HA versions
+    make that a read-only property that the config_entries module already
+    populates before async_step_init is called. Assigning it yourself raises
     'property has no setter'.
     """
 

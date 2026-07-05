@@ -1,27 +1,29 @@
 // notify-dashboard-card.js
-// Lovelace-card voor de notify_dashboard integratie.
-// Leest sensor.notify_dashboard (attributen: notifications[], live_activities[]).
+// Lovelace card for the notify_dashboard integration.
+// Reads sensor.notify_dashboard (attributes: notifications[], live_activities[]).
 //
-// Status: fase-1 scaffold — YAML-config, nog geen visuele editor.
-// Ontwerpbeslissingen zijn 1-op-1 verwerkt: geen chevron/uitklap, altijd
-// volledige tekst, sluiten-knop als laatste feature, tap=navigeren (niet
-// dismissen), tag-replace = volledige vervanging (dus geen client-side merge
-// nodig — de backend levert al complete entries).
+// Status: fase 1, including a visual editor (tab skeleton taken 1-to-1 from
+// package-tracker-card: tab bar, ha-switch/ha-form rows, config-changed +
+// _ownFire echo protection).
+// Design decisions are implemented 1-to-1: no chevron/expand, always full
+// text, dismiss button as the last feature, tap = navigate (not dismiss),
+// tag-replace = full replacement (so no client-side merge needed — the
+// backend already delivers complete entries).
 //
-// Fase 2, deels: progress-bar (progress/progress_max, met percentage) en
-// chronometer/when voor live activities. progress_indeterminate en
-// critical_text zijn bewust nog niet opgepakt (onbevestigd veld resp. een
-// lock-screen-conceptje dat niet 1-op-1 op een dashboard-kaart past).
+// Fase 2, partially: progress bar (progress/progress_max, with percentage)
+// and chronometer/when for live activities. progress_indeterminate and
+// critical_text are deliberately not picked up yet (an unconfirmed field,
+// and a lock-screen concept that doesn't map 1-to-1 onto a dashboard card).
 
 const CARD_VERSION = '0.1.7';
 
 const CARD_DEFAULTS = {
-  layout: 'single', // of: split
+  layout: 'single', // or: split
   content: ['live_activities', 'notifications'],
-  group_order: 'live_first', // of: notifications_first / chronological
+  group_order: 'live_first', // or: notifications_first / chronological
   filter_tags: [],
   filter_groups: [],
-  max_items: 0, // 0 = geen limiet
+  max_items: 0, // 0 = no limit
   hide_when_empty: false,
   default_icon: 'mdi:bell-outline',
   default_icon_color: 'var(--primary-color)',
@@ -42,10 +44,10 @@ const CARD_CSS = `
   .row { display: flex; flex-direction: column; padding: 12px 16px; gap: 14px; }
   .row + .row { border-top: 1px solid var(--divider-color, rgba(0,0,0,.06)); }
 
-  /* flex-start (niet center): icon/dismiss moeten bovenin blijven hangen en
-     nooit meezakken als de message meerdere regels beslaat. Korte content
-     (bv. enkel een titel) wordt in plaats daarvan via .content zelf verticaal
-     gecentreerd, zie hieronder. */
+  /* flex-start (not center): icon/dismiss must stay pinned to the top and
+     never sink down when the message spans multiple lines. Short content
+     (e.g. just a title) gets vertically centered instead via .content
+     itself, see below. */
   .row-main { display: flex; align-items: flex-start; gap: 14px; }
 
   .icon-wrap {
@@ -55,10 +57,11 @@ const CARD_CSS = `
   .icon-wrap.clickable { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   ha-icon { --mdc-icon-size: 20px; pointer-events: none; display: flex; }
 
-  /* min-height gelijk aan .icon-wrap: bij korte content (geen message) klemt
-     dit de doos op 38px en centreert justify-content de titel daarin, gelijk
-     met het icoon. Bij langere content heeft dit geen effect — de doos groeit
-     gewoon mee en alles stapelt vanaf boven, net als het icoon. */
+  /* min-height matching .icon-wrap: for short content (no message) this
+     clamps the box to 38px and justify-content centers the title within it,
+     matching the icon. For longer content this has no effect — the box just
+     grows along with it and everything stacks from the top, same as the
+     icon. */
   .content {
     flex: 1; min-width: 0; min-height: 38px;
     display: flex; flex-direction: column; justify-content: center;
@@ -77,9 +80,10 @@ const CARD_CSS = `
     margin-top: 3px; font-variant-numeric: tabular-nums;
   }
 
-  /* Hergebruikt .icon-wrap voor de exacte doos (38x38, rond) — ha-icon-button
-     forceert intern een vaste ~48x48 touch-target die --mdc-icon-button-size
-     niet overschrijft, dus nooit exact gelijk aan het main-icoon te krijgen. */
+  /* Reuses .icon-wrap for the exact box (38x38, round) — ha-icon-button
+     internally forces a fixed ~48x48 touch target that ignores
+     --mdc-icon-button-size, so it can never be made exactly equal to the
+     main icon. */
   .row-dismiss {
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
@@ -92,8 +96,8 @@ const CARD_CSS = `
 
   .row-actions { display: flex; flex-direction: column; gap: 8px; margin-left: 52px; }
   .row-actions ha-control-button { width: 100%; }
-  /* currentColor volgt de knop-tekstkleur automatisch mee, ook bij destructive
-     (dan rood via --control-button-icon-color: var(--error-color)). */
+  /* currentColor automatically follows the button's text color, including
+     destructive (then red via --control-button-icon-color: var(--error-color)). */
   .action-spinner {
     width: 16px; height: 16px; border-radius: 50%;
     border: 2px solid color-mix(in srgb, currentColor 25%, transparent);
@@ -102,14 +106,14 @@ const CARD_CSS = `
   }
   @keyframes notify-dashboard-spin { to { transform: rotate(360deg); } }
 
-  /* Ziet eruit als een lege actie-feature die vult met notification_icon_color
-     — zelfde breedte als de actie-knoppen, maar bewust lager (14px vs de
-     ~36-40px van ha-control-button). --control-button-border-radius (indien
-     ha-control-button die daadwerkelijk zet) is leidend; de 5px-fallback is
-     bewust kleiner dan de knop-radius zelf en dan de halve hoogte (7px) —
-     anders klemt de browser 'm sowieso vast op een volledige pil/capsule i.p.v.
-     een lichte afronding. Nog niet geverifieerd of
-     --control-button-border-radius de juiste variabele-naam is. */
+  /* Looks like an empty action feature that fills with notification_icon_color
+     — same width as the action buttons, but deliberately shorter (14px vs the
+     ~36-40px of ha-control-button). --control-button-border-radius (if
+     ha-control-button actually sets it — confirmed against the real HA
+     frontend source) takes precedence; the 5px fallback is deliberately
+     smaller than the button radius itself and than half the height (7px) —
+     otherwise the browser clamps it into a full pill/capsule shape regardless,
+     instead of a light rounding. */
   .progress-wrap { display: flex; align-items: center; gap: 8px; }
   .progress-feature {
     width: 100%; height: 14px; border-radius: var(--control-button-border-radius, 5px);
@@ -118,7 +122,7 @@ const CARD_CSS = `
   }
   .progress-wrap .progress-feature { flex: 1; width: auto; }
   .progress-fill { height: 100%; border-radius: inherit; transition: width 300ms ease-in-out; }
-  /* Zelfde breedte als de sluiten-knop (.icon-wrap, 38px), tekst gecentreerd. */
+  /* Same width as the dismiss button (.icon-wrap, 38px), text centered. */
   .progress-label {
     flex-shrink: 0; width: 38px; text-align: center;
     font-size: var(--ha-font-size-xs, 11px); color: var(--secondary-text-color);
@@ -134,6 +138,126 @@ const CARD_CSS = `
     display: flex; flex-direction: column; align-items: center; gap: 8px;
   }
 `;
+
+// Taken 1-to-1 from package-tracker-card-editor: tab bar + srow rows
+// (label/desc on the left, ha-switch or ha-form on the right).
+const EDITOR_CSS = `
+  :host { display: block; }
+  ha-form { display: block; }
+  .editor-card {
+    border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px);
+    overflow: hidden; background: var(--ha-card-background, var(--card-background-color, #fff));
+  }
+  .tab-bar { display: flex; border-bottom: 1px solid var(--divider-color); }
+  .tab-btn {
+    flex: 1; padding: 12px 4px; border: none; background: none; font-family: inherit;
+    font-size: 13px; font-weight: 500; color: var(--secondary-text-color); cursor: pointer;
+    border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s, border-color .15s;
+  }
+  .tab-btn:hover { color: var(--primary-text-color); }
+  .tab-btn.active { color: var(--primary-color); border-bottom-color: var(--primary-color); font-weight: 600; }
+  .tab-content { padding: 16px; }
+  .section-label {
+    font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--secondary-text-color); margin: 24px 0 0;
+  }
+  .section-label:first-child { margin-top: 0; }
+  .settings-group { margin-top: 8px; }
+  .srow {
+    display: flex; align-items: center; justify-content: space-between; min-height: 48px;
+    padding: 4px 2px; border-bottom: 1px solid var(--divider-color); gap: 8px;
+  }
+  .settings-group .srow:last-child { border-bottom: none; }
+  .srow-text { flex: 1; min-width: 0; }
+  .srow-label { font-size: 14px; color: var(--primary-text-color); display: block; }
+  .srow-desc { font-size: 12px; color: var(--secondary-text-color); display: block; margin-top: 1px; }
+  ha-switch { flex-shrink: 0; }
+`;
+
+// Same pattern as package-tracker-card: TRANSLATIONS[hass.language], with
+// 'en' as the fallback for untranslated languages. English is the default;
+// Dutch is supported as an additional language, not the other way around.
+const EDITOR_TRANSLATIONS = {
+  nl: {
+    content_tab: 'Inhoud',
+    filter_tab: 'Filter',
+    appearance_tab: 'Weergave',
+    source_section: 'Bron',
+    content_section: 'Inhoud',
+    filter_section: 'Filter',
+    appearance_section: 'Weergave',
+    behaviour_section: 'Gedrag',
+    entity: 'Entiteit',
+    live_activities: 'Live activities',
+    notifications: 'Notifications',
+    layout: 'Indeling',
+    layout_single: 'Eén kaart',
+    layout_split: 'Losse kaarten',
+    group_order: 'Groepsvolgorde',
+    group_order_live_first: 'Live activities eerst',
+    group_order_notifications_first: 'Notifications eerst',
+    group_order_chronological: 'Chronologisch (door elkaar)',
+    max_items: 'Max. aantal items',
+    max_items_desc: '0 = geen limiet',
+    filter_tags: 'Tags',
+    filter_groups: 'Groepen',
+    filter_desc: 'Komma-gescheiden, leeg = alles',
+    hide_when_empty: 'Verberg kaart als leeg',
+    default_icon: 'Standaardicoon',
+    default_icon_desc: 'Gebruikt als een melding geen eigen icoon meegeeft',
+    default_icon_color: 'Standaardkleur',
+    default_icon_color_desc: 'CSS-kleur of var(--token)',
+    confirm_dismiss: 'Bevestiging bij dismissen',
+    show_open_action: 'Open-knop tonen',
+  },
+  en: {
+    content_tab: 'Content',
+    filter_tab: 'Filter',
+    appearance_tab: 'Appearance',
+    source_section: 'Source',
+    content_section: 'Content',
+    filter_section: 'Filter',
+    appearance_section: 'Appearance',
+    behaviour_section: 'Behaviour',
+    entity: 'Entity',
+    live_activities: 'Live activities',
+    notifications: 'Notifications',
+    layout: 'Layout',
+    layout_single: 'Single card',
+    layout_split: 'Split cards',
+    group_order: 'Group order',
+    group_order_live_first: 'Live activities first',
+    group_order_notifications_first: 'Notifications first',
+    group_order_chronological: 'Chronological (mixed)',
+    max_items: 'Max. items',
+    max_items_desc: '0 = no limit',
+    filter_tags: 'Tags',
+    filter_groups: 'Groups',
+    filter_desc: 'Comma-separated, empty = all',
+    hide_when_empty: 'Hide card when empty',
+    default_icon: 'Default icon',
+    default_icon_desc: "Used when a notification doesn't have its own icon",
+    default_icon_color: 'Default color',
+    default_icon_color_desc: 'CSS color or var(--token)',
+    confirm_dismiss: 'Confirm before dismissing',
+    show_open_action: 'Show Open button',
+  },
+};
+
+// Runtime card strings (not editor-only) — same fallback convention as
+// EDITOR_TRANSLATIONS: English by default, Dutch as an additional language.
+const CARD_TRANSLATIONS = {
+  nl: {
+    dismiss: 'Sluiten',
+    empty: 'Geen meldingen',
+    confirm_dismiss: 'Melding verwijderen?',
+  },
+  en: {
+    dismiss: 'Dismiss',
+    empty: 'No notifications',
+    confirm_dismiss: 'Remove this notification?',
+  },
+};
 
 function mk(tag, cls, text) {
   const el = document.createElement(tag);
@@ -157,6 +281,22 @@ function matchesFilter(item, filterTags, filterGroups) {
   return true;
 }
 
+// Editor-only helpers (content-array toggles, filter_tags/filter_groups as
+// comma-separated text instead of separate chips).
+function toggleInArray(arr, value, include) {
+  const set = new Set(arr);
+  if (include) set.add(value);
+  else set.delete(value);
+  return [...set];
+}
+
+function splitCsv(value) {
+  return (value || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 class NotifyDashboardCard extends HTMLElement {
   constructor() {
     super();
@@ -165,26 +305,28 @@ class NotifyDashboardCard extends HTMLElement {
     this._root = this.shadowRoot.getElementById('root');
     this._lastUpdated = null;
     this._built = false;
-    // Rijen (en hun chronometer-intervals) blijven tussen renders in leven,
-    // gekeyed op _kind:id — een re-render herbouwt alleen wat qua
-    // updated_at/created_at echt gewijzigd is, i.p.v. alles af te breken en
-    // opnieuw op te bouwen. Zie _syncRows().
+    // Rows (and their chronometer intervals) stay alive across renders,
+    // keyed by _kind:id — a re-render only rebuilds what actually changed
+    // in terms of updated_at/created_at, instead of tearing everything down
+    // and rebuilding it. See _syncRows().
     this._rows = new Map();
     this._rowContainer = null;
     this._containerKind = null;
   }
 
   disconnectedCallback() {
-    // Zonder opruimen blijven gecachete rijen (en hun chronometer-intervals)
-    // eeuwig leven nadat de kaart uit de DOM is, bv. bij wisselen van view.
+    // Without cleanup, cached rows (and their chronometer intervals) would
+    // keep living forever after the card leaves the DOM, e.g. on a view
+    // switch.
     this._teardownRows();
   }
 
   _teardownRows() {
-    // Ruimt altijd ook de DOM-node zelf op (niet alleen de intervals) — zo is
-    // dit een echte "alles weg"-primitief, bruikbaar door zowel paden die de
-    // hele root daarna toch wipen als door setConfig(), waar dat niet gebeurt
-    // en een niet-verwijderde node anders als stille duplicaat blijft staan.
+    // Always also cleans up the DOM node itself (not just the intervals) —
+    // that makes this a real "remove everything" primitive, usable both by
+    // paths that wipe the whole root afterward anyway and by setConfig(),
+    // where that doesn't happen and a node left in place would otherwise
+    // become a silent duplicate.
     for (const entry of this._rows.values()) {
       entry.intervalIds.forEach((id) => clearInterval(id));
       entry.el.remove();
@@ -193,12 +335,12 @@ class NotifyDashboardCard extends HTMLElement {
   }
 
   setConfig(config) {
-    if (!config) throw new Error('notify-dashboard-card: config ontbreekt');
+    if (!config) throw new Error('notify-dashboard-card: config missing');
     this._config = { ...CARD_DEFAULTS, ...config };
     this._entity = config.entity || 'sensor.notify_dashboard';
-    // Config kan van invloed zijn op hoe elke rij rendert (iconen, knoppen,
-    // confirm_dismiss, ...) — de rij-cache is dan niet meer geldig, dus
-    // alles moet bij de eerstvolgende render vers opgebouwd worden.
+    // Config can affect how every row renders (icons, buttons,
+    // confirm_dismiss, ...) — the row cache is then no longer valid, so
+    // everything needs to be freshly rebuilt on the next render.
     this._teardownRows();
     if (this._hass) this._render();
   }
@@ -214,26 +356,31 @@ class NotifyDashboardCard extends HTMLElement {
     }
   }
 
+  _uiTr() {
+    return CARD_TRANSLATIONS[this._hass?.language] || CARD_TRANSLATIONS['en'];
+  }
+
   _dismiss(id) {
-    if (this._config.confirm_dismiss && !window.confirm('Melding verwijderen?')) return;
+    if (this._config.confirm_dismiss && !window.confirm(this._uiTr().confirm_dismiss)) return;
     this._hass.callService('notify_dashboard', 'dismiss', { id });
   }
 
   _handleAction(action, item, actionData) {
     if (!action) return;
-    // Loopt via de notify_dashboard.fire_action-service (die hass.bus.async_fire
-    // server-side aanroept) i.p.v. hier zelf de fire_event websocket-actie te
-    // sturen — die vereist admin-rechten in HA core, dus zou voor niet-admin
-    // dashboardgebruikers (bv. een kiosk-tablet) stil niets doen. Service-
-    // aanroepen kennen die beperking niet. Zelfde event-vorm als de companion-
-    // app (action, action_data, tag), zodat bestaande wait_for_trigger-
-    // automations ongewijzigd blijven werken.
+    // Runs through the notify_dashboard.fire_action service (which calls
+    // hass.bus.async_fire server-side) instead of sending the fire_event
+    // websocket action from here — that one requires admin rights in HA
+    // core, so it would silently do nothing for non-admin dashboard
+    // viewers (e.g. a kiosk tablet). Service calls don't have that
+    // restriction. Same event shape as the companion app (action,
+    // action_data, tag), so existing wait_for_trigger automations keep
+    // working unchanged.
     const payload = { action };
     if (item.tag) payload.tag = item.tag;
     if (actionData != null) payload.action_data = actionData;
     this._hass
       .callService('notify_dashboard', 'fire_action', payload)
-      .catch((err) => console.warn('notify-dashboard-card: kon actie niet versturen', err));
+      .catch((err) => console.warn('notify-dashboard-card: could not send action', err));
   }
 
   _openUrl(url) {
@@ -273,14 +420,14 @@ class NotifyDashboardCard extends HTMLElement {
     iconWrap.appendChild(mkIcon(icon, color));
 
     const content = mk('div', 'content' + (url ? ' clickable' : ''));
-    // Alleen renderen wat er is — een lege div duwt anders ongewenste
-    // witruimte in de rij. Cascaderende fallback zodat een ontbrekend veld
-    // niet gewoon leeg blijft terwijl er nog relevante content is:
-    // - geen title, wel message -> message krijgt de title-opmaak.
-    // - geen message (en title kwam niet al van message) -> de chronometer
-    //   krijgt de message-opmaak i.p.v. zijn eigen kleinere stijl.
-    // Niets wordt dubbel getoond: zodra message de title heeft ingevuld,
-    // verschijnt diezelfde tekst niet nogmaals als message.
+    // Only render what's actually there — an empty div would otherwise push
+    // unwanted whitespace into the row. Cascading fallback so a missing
+    // field doesn't just leave a gap while there's still relevant content:
+    // - no title, but there is a message -> message gets the title styling.
+    // - no message (and title didn't already come from message) -> the
+    //   chronometer gets the message styling instead of its own smaller style.
+    // Nothing is ever shown twice: once message has filled in the title,
+    // that same text doesn't also appear as the message.
     const hasChronometer =
       item._kind === 'live_activities' && !!data.chronometer && Number.isFinite(data.when);
     const titleText = item.title || item.message || null;
@@ -290,10 +437,10 @@ class NotifyDashboardCard extends HTMLElement {
     if (titleText) content.appendChild(mk('div', 'title', titleText));
     if (showMessage) content.appendChild(mk('div', 'message', item.message));
 
-    // when_relative telt when op bij updated_at (het moment dat wij 'm
-    // binnenkregen) i.p.v. bij de rendertijd, zodat het target niet
-    // verschuift bij elke re-render. Tikt lokaal door via setInterval — geen
-    // herhaalde pushes nodig, net als bij de companion-app.
+    // when_relative adds when to updated_at (the moment we received it)
+    // instead of to the render time, so the target doesn't shift on every
+    // re-render. Ticks locally via setInterval — no repeated pushes needed,
+    // same as with the companion app.
     if (hasChronometer) {
       const target = data.when_relative ? (item.updated_at || 0) + data.when : data.when;
       const chrono = mk('div', chronoAsMessage ? 'message' : 'chronometer');
@@ -306,7 +453,7 @@ class NotifyDashboardCard extends HTMLElement {
     }
 
     if (url) {
-      // Tap = navigeren, dismixt niet (zie ontwerpdocument 3.7).
+      // Tap = navigate, doesn't dismiss (see design doc 3.7).
       const onTap = () => this._openUrl(url);
       iconWrap.addEventListener('click', onTap);
       content.addEventListener('click', onTap);
@@ -316,14 +463,14 @@ class NotifyDashboardCard extends HTMLElement {
     main.appendChild(content);
 
     if (!persistent) {
-      // Zelfde primitief (icon-wrap) als het main-icoon i.p.v. ha-icon-button,
-      // zodat de doos (dus ook de hover-achtergrond) exact 38x38 is — gelijk
-      // aan het main-icoon, en op dezelfde hoogte omdat beide gewone flex-
-      // children van row-main zijn.
+      // Same primitive (icon-wrap) as the main icon instead of ha-icon-button,
+      // so the box (and thus the hover background) is exactly 38x38 — matching
+      // the main icon, and at the same height since both are plain flex
+      // children of row-main.
       const closeBtn = mk('div', 'icon-wrap row-dismiss');
       closeBtn.setAttribute('role', 'button');
       closeBtn.tabIndex = 0;
-      closeBtn.setAttribute('aria-label', 'Sluiten');
+      closeBtn.setAttribute('aria-label', this._uiTr().dismiss);
       closeBtn.appendChild(mkIcon('mdi:close', 'var(--secondary-text-color)'));
       const onDismiss = () => this._dismiss(item.id);
       closeBtn.addEventListener('click', onDismiss);
@@ -338,16 +485,15 @@ class NotifyDashboardCard extends HTMLElement {
 
     row.appendChild(main);
 
-    // De Open-knop is optioneel (show_open_action) — tap op icoon/content
-    // navigeert sowieso al, deze knop is puur een expliciet, zichtbaar
-    // alternatief daarvoor.
+    // The Open button is optional (show_open_action) — tapping the icon/
+    // content already navigates anyway, this button is purely an explicit,
+    // visible alternative for that.
     const showOpenBtn = !!url && this._config.show_open_action;
 
-    // Progress-bar: alleen voor live activities, en alleen als beide velden
-    // aanwezig zijn (zelfde voorwaarde als de companion-app: progress_max
-    // moet gezet zijn wil er een balk verschijnen). progress: -1 (klaar-
-    // signaal) verwijdert de live activity al server-side, komt hier dus
-    // nooit binnen.
+    // Progress bar: only for live activities, and only if both fields are
+    // present (same condition as the companion app: progress_max must be
+    // set for a bar to appear). progress: -1 (the "done" signal) already
+    // removes the live activity server-side, so it never reaches here.
     const hasProgress =
       item._kind === 'live_activities' &&
       Number.isFinite(data.progress) &&
@@ -355,8 +501,8 @@ class NotifyDashboardCard extends HTMLElement {
       data.progress_max > 0;
 
     if (hasProgress || showOpenBtn || actions.length) {
-      // Altijd verticaal gestapeld — labels zijn vaak te lang voor een
-      // horizontale rij van gelijk-verdeelde knoppen.
+      // Always stacked vertically — labels are often too long for a
+      // horizontal row of equally-sized buttons.
       const rowActions = mk('div', 'row-actions');
       if (hasProgress) {
         const pct = Math.max(0, Math.min(100, (data.progress / data.progress_max) * 100));
@@ -373,33 +519,34 @@ class NotifyDashboardCard extends HTMLElement {
       actions.forEach((a) => {
         const btn = document.createElement('ha-control-button');
         btn.textContent = a.title || a.action;
-        // destructive (companion-app-veld): rode tekst i.p.v. de standaardkleur.
+        // destructive (companion-app field): red text instead of the default color.
         if (a.destructive) {
           btn.style.setProperty('--control-button-icon-color', 'var(--error-color)');
         }
         let clicked = false;
         btn.addEventListener('click', () => {
-          // Eigen vlag i.p.v. op ha-control-button's disabled-status leunen —
-          // voorkomt dubbel-tappen ongeacht of dat element zelf disabled
-          // correct afhandelt.
+          // Own flag instead of relying on ha-control-button's disabled
+          // state — prevents double-tapping regardless of whether that
+          // element handles disabled correctly itself.
           if (clicked) return;
           clicked = true;
           btn.textContent = '';
           btn.appendChild(mk('div', 'action-spinner'));
           this._handleAction(a.action, item, a.action_data);
-          // Kleine delay als bevestiging dat de tap is verwerkt, daarna
-          // dismissen — geldt niet voor de Open-knop (die navigeert alleen).
+          // Small delay to confirm the tap was processed, then dismiss —
+          // doesn't apply to the Open button (which only navigates).
           setTimeout(() => {
             this._hass
               .callService('notify_dashboard', 'dismiss', { id: item.id })
-              .catch(() => {}); // bv. al weg, of persistent — dan hoeft dit niets te doen
+              .catch(() => {}); // e.g. already gone, or persistent — nothing to do then
           }, 600);
         });
         rowActions.appendChild(btn);
       });
       if (showOpenBtn) {
-        // Na de acties (niet ervoor) — Open is de generieke fallback-tap,
-        // geen hoofdactie. Minder prominent zodra er ook echte acties zijn.
+        // After the actions (not before) — Open is the generic fallback
+        // tap, not a primary action. Less prominent once real actions
+        // exist too.
         const openBtn = document.createElement('ha-control-button');
         openBtn.textContent = 'Open';
         if (actions.length) {
@@ -421,8 +568,8 @@ class NotifyDashboardCard extends HTMLElement {
     const { filter_tags: filterTags, filter_groups: filterGroups, content, group_order: groupOrder } = this._config;
 
     const byNewest = (a, b) => (b.updated_at || b.created_at || 0) - (a.updated_at || a.created_at || 0);
-    // chronological sorteert de gecombineerde lijst toch nog een keer — een
-    // per-kind sort hier zou dan pure herhaalde arbeid zijn.
+    // chronological sorts the combined list again anyway — a per-kind sort
+    // here would then just be pure repeated work.
     const sortPerKind = groupOrder !== 'chronological';
 
     const collect = (key, kind) => {
@@ -449,13 +596,12 @@ class NotifyDashboardCard extends HTMLElement {
     return items;
   }
 
-  // Zet (of hergebruikt) de rijen van `items` als kinderen van
-  // this._rowContainer, in de juiste volgorde. Een rij wordt alleen echt
-  // opnieuw gebouwd (en dus: krijgt alleen dan een nieuwe chronometer-
-  // interval) als updated_at/created_at is veranderd — een niet-gewijzigde
-  // rij elders in de kaart blijft volledig met rust, ook als een andere rij
-  // net update. Zonder dit tikt elke chronometer opnieuw vanaf nul zodra
-  // wát dan ook in de kaart verandert.
+  // Sets (or reuses) the rows for `items` as children of this._rowContainer,
+  // in the right order. A row is only actually rebuilt (and thus only then
+  // gets a new chronometer interval) if updated_at/created_at has changed —
+  // an unchanged row elsewhere in the card is left completely alone, even
+  // when another row just updated. Without this, every chronometer would
+  // tick again from zero whenever anything at all changes in the card.
   _syncRows(items, layout) {
     const seen = new Set();
     let prevEl = null;
@@ -469,7 +615,7 @@ class NotifyDashboardCard extends HTMLElement {
       if (!entry || entry.updatedAt !== updatedAt) {
         if (entry) {
           entry.intervalIds.forEach((id) => clearInterval(id));
-          entry.el.remove(); // anders blijft de oude node als stale duplicaat staan
+          entry.el.remove(); // otherwise the old node stays behind as a stale duplicate
         }
         const intervalIds = [];
         const row = this._renderRow(item, intervalIds);
@@ -519,7 +665,7 @@ class NotifyDashboardCard extends HTMLElement {
         ico.style.setProperty('--mdc-icon-size', '32px');
         ico.style.opacity = '.3';
         empty.appendChild(ico);
-        empty.appendChild(mk('div', null, 'Geen meldingen'));
+        empty.appendChild(mk('div', null, this._uiTr().empty));
         card.appendChild(empty);
         this._root.appendChild(card);
         this._containerKind = 'empty';
@@ -529,8 +675,8 @@ class NotifyDashboardCard extends HTMLElement {
 
     const layout = this._config.layout === 'split' ? 'split' : 'single';
     if (this._containerKind !== layout) {
-      // Layout gewisseld (of eerste render) — container zelf ook vervangen;
-      // _syncRows() ziet dan geen bestaande rijen meer en bouwt alles vers op.
+      // Layout switched (or first render) — replace the container itself too;
+      // _syncRows() then sees no existing rows and rebuilds everything fresh.
       this._teardownRows();
       this._root.innerHTML = '';
       this._rowContainer =
@@ -550,6 +696,292 @@ class NotifyDashboardCard extends HTMLElement {
   static getStubConfig() {
     return { ...CARD_DEFAULTS, entity: 'sensor.notify_dashboard' };
   }
+
+  static getConfigElement() {
+    return document.createElement('notify-dashboard-card-editor');
+  }
+}
+
+// Visual editor — tab skeleton (tab bar, _fire/_ownFire echo protection,
+// ha-switch/ha-form rows) taken 1-to-1 from package-tracker-card.
+// hold_action/double_tap_action are deliberately not included: that config
+// isn't wired to any handler anywhere (no tap actions on the card yet), so
+// an editor field for it would suggest something that does nothing.
+class NotifyDashboardCardEditor extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+    this._config = null;
+    this._hass = null;
+    this._built = false;
+    this._ownFire = false;
+    this._tab = 'content';
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this.shadowRoot.querySelectorAll('ha-form').forEach((f) => {
+      f.hass = hass;
+    });
+  }
+
+  setConfig(config) {
+    if (!this._built) {
+      this._config = this._normalize(config);
+      this._init();
+      return;
+    }
+    // The config-changed we just fired ourselves comes back here through
+    // Lovelace — without this guard that would trigger a pointless full
+    // re-render (and could reset the active tab).
+    if (this._ownFire) {
+      this._ownFire = false;
+      return;
+    }
+    this._config = this._normalize(config);
+    this._renderTab();
+  }
+
+  _normalize(config) {
+    return { ...CARD_DEFAULTS, ...config };
+  }
+
+  _fire(config) {
+    this._config = config;
+    this._ownFire = true;
+    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config }, bubbles: true, composed: true }));
+  }
+
+  _fireAndRender(config) {
+    this._fire(config);
+    this._renderTab();
+  }
+
+  _init() {
+    this._built = true;
+    const root = this.shadowRoot;
+    root.innerHTML = '';
+    root.appendChild(Object.assign(document.createElement('style'), { textContent: EDITOR_CSS }));
+
+    const uiTr = EDITOR_TRANSLATIONS[this._hass?.language] || EDITOR_TRANSLATIONS['en'];
+    const card = mk('div', 'editor-card');
+    const tabBar = mk('div', 'tab-bar');
+    [
+      ['content', uiTr.content_tab],
+      ['filter', uiTr.filter_tab],
+      ['appearance', uiTr.appearance_tab],
+    ].forEach(([id, label]) => {
+      const btn = Object.assign(document.createElement('button'), {
+        className: 'tab-btn' + (id === this._tab ? ' active' : ''),
+        textContent: label,
+      });
+      btn.dataset.tab = id;
+      btn.addEventListener('click', () => {
+        if (this._tab === id) return;
+        this._tab = id;
+        tabBar.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === id));
+        this._renderTab();
+      });
+      tabBar.appendChild(btn);
+    });
+    card.appendChild(tabBar);
+
+    this._content = mk('div', 'tab-content');
+    card.appendChild(this._content);
+    root.appendChild(card);
+    this._renderTab();
+  }
+
+  _renderTab() {
+    this._content.innerHTML = '';
+    if (this._tab === 'content') this._renderContent();
+    else if (this._tab === 'filter') this._renderFilter();
+    else if (this._tab === 'appearance') this._renderAppearance();
+    if (this._hass) {
+      this.shadowRoot.querySelectorAll('ha-form').forEach((f) => {
+        f.hass = this._hass;
+      });
+    }
+  }
+
+  // ── Content ───────────────────────────────────────────────────────────────
+
+  _renderContent() {
+    const root = this._content;
+    const c = this._config;
+    const content = c.content || [];
+    const uiTr = EDITOR_TRANSLATIONS[this._hass?.language] || EDITOR_TRANSLATIONS['en'];
+
+    root.appendChild(mk('div', 'section-label', uiTr.source_section));
+    const sourceGroup = mk('div', 'settings-group');
+    sourceGroup.appendChild(
+      this._mkFormRow(uiTr.entity, null, { entity: { domain: 'sensor' } }, c.entity || 'sensor.notify_dashboard', (val) =>
+        this._fireAndRender({ ...c, entity: val })
+      )
+    );
+    root.appendChild(sourceGroup);
+
+    root.appendChild(mk('div', 'section-label', uiTr.content_section));
+    const contentGroup = mk('div', 'settings-group');
+    contentGroup.appendChild(
+      this._mkToggleRow(uiTr.live_activities, content.includes('live_activities'), null, (val) =>
+        this._fireAndRender({ ...c, content: toggleInArray(content, 'live_activities', val) })
+      )
+    );
+    contentGroup.appendChild(
+      this._mkToggleRow(uiTr.notifications, content.includes('notifications'), null, (val) =>
+        this._fireAndRender({ ...c, content: toggleInArray(content, 'notifications', val) })
+      )
+    );
+    contentGroup.appendChild(
+      this._mkFormRow(
+        uiTr.layout,
+        null,
+        { select: { options: [{ value: 'single', label: uiTr.layout_single }, { value: 'split', label: uiTr.layout_split }] } },
+        c.layout || 'single',
+        (val) => this._fireAndRender({ ...c, layout: val })
+      )
+    );
+    contentGroup.appendChild(
+      this._mkFormRow(
+        uiTr.group_order,
+        null,
+        {
+          select: {
+            options: [
+              { value: 'live_first', label: uiTr.group_order_live_first },
+              { value: 'notifications_first', label: uiTr.group_order_notifications_first },
+              { value: 'chronological', label: uiTr.group_order_chronological },
+            ],
+          },
+        },
+        c.group_order || 'live_first',
+        (val) => this._fireAndRender({ ...c, group_order: val })
+      )
+    );
+    contentGroup.appendChild(
+      this._mkFormRow(
+        uiTr.max_items,
+        uiTr.max_items_desc,
+        { number: { min: 0, max: 100, step: 1, mode: 'box' } },
+        c.max_items ?? 0,
+        (val) => this._fireAndRender({ ...c, max_items: Number(val) || 0 })
+      )
+    );
+    root.appendChild(contentGroup);
+  }
+
+  // ── Filter ────────────────────────────────────────────────────────────────
+
+  _renderFilter() {
+    const root = this._content;
+    const c = this._config;
+    const uiTr = EDITOR_TRANSLATIONS[this._hass?.language] || EDITOR_TRANSLATIONS['en'];
+
+    root.appendChild(mk('div', 'section-label', uiTr.filter_section));
+    const group = mk('div', 'settings-group');
+    group.appendChild(
+      this._mkFormRow(uiTr.filter_tags, uiTr.filter_desc, { text: {} }, (c.filter_tags || []).join(', '), (val) =>
+        this._fireAndRender({ ...c, filter_tags: splitCsv(val) })
+      )
+    );
+    group.appendChild(
+      this._mkFormRow(uiTr.filter_groups, uiTr.filter_desc, { text: {} }, (c.filter_groups || []).join(', '), (val) =>
+        this._fireAndRender({ ...c, filter_groups: splitCsv(val) })
+      )
+    );
+    root.appendChild(group);
+  }
+
+  // ── Appearance ────────────────────────────────────────────────────────────
+
+  _renderAppearance() {
+    const root = this._content;
+    const c = this._config;
+    const uiTr = EDITOR_TRANSLATIONS[this._hass?.language] || EDITOR_TRANSLATIONS['en'];
+
+    root.appendChild(mk('div', 'section-label', uiTr.appearance_section));
+    const group = mk('div', 'settings-group');
+    group.appendChild(
+      this._mkToggleRow(uiTr.hide_when_empty, !!c.hide_when_empty, null, (val) =>
+        this._fireAndRender({ ...c, hide_when_empty: val })
+      )
+    );
+    group.appendChild(
+      this._mkFormRow(
+        uiTr.default_icon,
+        uiTr.default_icon_desc,
+        { icon: {} },
+        c.default_icon || 'mdi:bell-outline',
+        (val) => this._fireAndRender({ ...c, default_icon: val })
+      )
+    );
+    group.appendChild(
+      this._mkFormRow(
+        uiTr.default_icon_color,
+        uiTr.default_icon_color_desc,
+        { text: {} },
+        c.default_icon_color || 'var(--primary-color)',
+        (val) => this._fireAndRender({ ...c, default_icon_color: val })
+      )
+    );
+    root.appendChild(group);
+
+    root.appendChild(mk('div', 'section-label', uiTr.behaviour_section));
+    const behavGroup = mk('div', 'settings-group');
+    behavGroup.appendChild(
+      this._mkToggleRow(uiTr.confirm_dismiss, !!c.confirm_dismiss, null, (val) =>
+        this._fireAndRender({ ...c, confirm_dismiss: val })
+      )
+    );
+    behavGroup.appendChild(
+      this._mkToggleRow(uiTr.show_open_action, c.show_open_action !== false, null, (val) =>
+        this._fireAndRender({ ...c, show_open_action: val })
+      )
+    );
+    root.appendChild(behavGroup);
+  }
+
+  // ── DOM helpers ───────────────────────────────────────────────────────────
+
+  _mkToggleRow(label, checked, description, onChange) {
+    const row = mk('div', 'srow');
+    const tw = mk('div', 'srow-text');
+    tw.appendChild(mk('span', 'srow-label', label));
+    if (description) tw.appendChild(mk('span', 'srow-desc', description));
+    const sw = document.createElement('ha-switch');
+    sw.checked = checked;
+    sw.addEventListener('change', () => onChange(sw.checked));
+    row.append(tw, sw);
+    return row;
+  }
+
+  // Generic ha-form row for everything except toggles — pass the selector
+  // in fully formed (select/text/icon/entity/number) instead of a separate
+  // helper per field type, since form.data/schema/computeLabel are
+  // identical for each type.
+  _mkFormRow(label, description, selector, value, onChange) {
+    const row = mk('div', 'srow');
+    const tw = mk('div', 'srow-text');
+    tw.appendChild(mk('span', 'srow-label', label));
+    if (description) tw.appendChild(mk('span', 'srow-desc', description));
+    const form = document.createElement('ha-form');
+    form.schema = [{ name: 'v', selector }];
+    form.data = { v: value };
+    form.computeLabel = () => '';
+    form.style.cssText = 'flex-shrink:0; width:200px;';
+    if (this._hass) form.hass = this._hass;
+    form.addEventListener('value-changed', (e) => {
+      const val = e.detail.value?.v;
+      if (val !== undefined) onChange(val);
+    });
+    row.append(tw, form);
+    return row;
+  }
+}
+
+if (!customElements.get('notify-dashboard-card-editor')) {
+  customElements.define('notify-dashboard-card-editor', NotifyDashboardCardEditor);
 }
 
 if (!customElements.get('notify-dashboard-card')) {
@@ -559,7 +991,7 @@ if (!customElements.get('notify-dashboard-card')) {
   window.customCards.push({
     type: 'notify-dashboard-card',
     name: 'Notify Dashboard Card',
-    description: 'Toont meldingen en live activities verstuurd via notify.dashboard.',
+    description: 'Displays notifications and live activities sent via notify.dashboard.',
     preview: true,
     version: CARD_VERSION,
   });
