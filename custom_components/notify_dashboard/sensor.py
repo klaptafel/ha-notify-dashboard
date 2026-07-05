@@ -32,7 +32,6 @@ class NotifyDashboardSensor(SensorEntity):
     _attr_has_entity_name = True
     _attr_translation_key = "dashboard"
     _attr_unique_id = f"{DOMAIN}_sensor"
-    _attr_icon = "mdi:bell-outline"
     _attr_should_poll = False
 
     def __init__(self, hass: HomeAssistant) -> None:

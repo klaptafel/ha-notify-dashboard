@@ -23,8 +23,14 @@ def mock_notify_target(hass):
 
     _async_mirror_clear calls hass.services.async_call("notify",
     "send_message", ..., target=...) — a plain service call, not an
-    entity-service lookup, so a real fake NotifyEntity isn't needed.
+    entity-service lookup, so a real fake NotifyEntity isn't needed. A state
+    is set for notify.mobile_app too: _async_mirror_clear checks
+    hass.states.get(entity_id) first (a real target service call against a
+    nonexistent entity_id silently does nothing, no exception — the
+    try/except around the actual call can't catch that case), so without
+    this the mock would never even get called.
     """
+    hass.states.async_set("notify.mobile_app", "unknown")
     return async_mock_service(hass, "notify", "send_message")
 
 

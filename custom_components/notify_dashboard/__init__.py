@@ -26,6 +26,7 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import Event, HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv, discovery
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
@@ -179,11 +180,15 @@ async def _async_ensure_core(hass: HomeAssistant, config: ConfigType) -> None:
             item = await store.async_dismiss(item_id)
         except NotificationNotFoundError as err:
             raise ServiceValidationError(
-                f"No notification found with id '{item_id}'"
+                translation_domain=DOMAIN,
+                translation_key="notification_not_found",
+                translation_placeholders={"item_id": item_id},
             ) from err
         except NotificationNotDismissableError as err:
             raise ServiceValidationError(
-                f"'{item_id}' can't be dismissed — this notification is persistent"
+                translation_domain=DOMAIN,
+                translation_key="notification_not_dismissable",
+                translation_placeholders={"item_id": item_id},
             ) from err
 
         tag = item.get("tag")
@@ -258,6 +263,10 @@ async def _async_register_lovelace_resource(hass: HomeAssistant) -> None:
         await resources.async_update_item(existing["id"], {"res_type": "module", "url": url})
 
 
+def _mirror_target_issue_id(entity_id: str) -> str:
+    return f"missing_mirror_target_{entity_id}"
+
+
 async def _async_mirror_clear(hass: HomeAssistant, tag: str) -> None:
     """Send clear_notification to the mirror_dismiss_to targets.
 
@@ -270,6 +279,23 @@ async def _async_mirror_clear(hass: HomeAssistant, tag: str) -> None:
     """
 
     async def _clear_one(entity_id: str) -> None:
+        issue_id = _mirror_target_issue_id(entity_id)
+        if hass.states.get(entity_id) is None:
+            # A target service call with no matching entity just silently
+            # does nothing (no exception) — the try/except below can't
+            # catch this case at all, so it's checked explicitly here.
+            ir.async_create_issue(
+                hass,
+                DOMAIN,
+                issue_id,
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key="missing_mirror_target",
+                translation_placeholders={"entity_id": entity_id},
+            )
+            return
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
+
         try:
             await hass.services.async_call(
                 "notify",

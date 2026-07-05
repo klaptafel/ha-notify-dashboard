@@ -1,0 +1,9 @@
+{
+  "entity": {
+    "sensor": {
+      "dashboard": {
+        "default": "mdi:bell-outline"
+      }
+    }
+  }
+}

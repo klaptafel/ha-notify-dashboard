@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import async_capture_events
 
 from custom_components.notify_dashboard import async_setup
@@ -109,11 +110,13 @@ async def test_dismiss_without_tag_does_not_forward(hass, store, mock_notify_tar
 
 
 async def test_dismiss_mirror_forward_failure_does_not_break_dismiss(hass, store):
-    # No "notify.send_message" service registered at all (unlike the
-    # mock_notify_target-using tests above) — simulates a mirror_dismiss_to
-    # target that no longer exists. The best-effort forward must be
-    # swallowed by _clear_one's try/except, without affecting the dismiss
-    # itself.
+    # Entity exists (so the missing-target issue check passes) but no
+    # "notify.send_message" service is registered at all — simulates a
+    # target that exists but fails to actually handle the call. The
+    # best-effort forward must be swallowed by _clear_one's try/except,
+    # without affecting the dismiss itself, and without creating a repair
+    # issue (that's reserved for the target-doesn't-exist case).
+    hass.states.async_set("notify.mobile_app", "unknown")
     hass.data[DOMAIN]["mirror_dismiss_to"] = ["notify.mobile_app"]
     await store.async_add_notification("T", "M", {"tag": "t1"})
     item_id = store.data["notifications"][0]["id"]
@@ -124,6 +127,50 @@ async def test_dismiss_mirror_forward_failure_does_not_break_dismiss(hass, store
     await hass.async_block_till_done()
 
     assert store.data["notifications"] == []
+    assert ir.async_get(hass).async_get_issue(DOMAIN, "missing_mirror_target_notify.mobile_app") is None
+
+
+async def test_dismiss_missing_mirror_target_creates_repair_issue(hass, store):
+    hass.data[DOMAIN]["mirror_dismiss_to"] = ["notify.mobile_app"]
+    await store.async_add_notification("T", "M", {"tag": "t1"})
+    item_id = store.data["notifications"][0]["id"]
+
+    await hass.services.async_call(
+        DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, "missing_mirror_target_notify.mobile_app")
+    assert issue is not None
+    assert issue.translation_key == "missing_mirror_target"
+    assert issue.translation_placeholders == {"entity_id": "notify.mobile_app"}
+
+
+async def test_dismiss_mirror_target_reappearing_clears_repair_issue(
+    hass, store, mock_notify_target
+):
+    hass.data[DOMAIN]["mirror_dismiss_to"] = ["notify.mobile_app"]
+
+    # First: target missing, dismiss creates the issue.
+    hass.states.async_remove("notify.mobile_app")
+    await store.async_add_notification("T", "M", {"tag": "t1"})
+    item_id = store.data["notifications"][0]["id"]
+    await hass.services.async_call(
+        DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert ir.async_get(hass).async_get_issue(DOMAIN, "missing_mirror_target_notify.mobile_app") is not None
+
+    # Then: target exists again (e.g. companion app reinstalled) — the next
+    # dismiss should self-heal by deleting the stale issue.
+    hass.states.async_set("notify.mobile_app", "unknown")
+    await store.async_add_notification("T", "M", {"tag": "t2"})
+    item_id = store.data["notifications"][0]["id"]
+    await hass.services.async_call(
+        DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert ir.async_get(hass).async_get_issue(DOMAIN, "missing_mirror_target_notify.mobile_app") is None
 
 
 async def test_dismiss_all_clears_and_keeps_persistent(hass, store):
