@@ -9,11 +9,11 @@
         },
         "data_description": {
           "mirror_dismiss_to": "Toont notify-entiteiten en legacy notify-services/groepen. Werkt alleen voor Companion App (mobile_app)-doelen — andere notify-integraties begrijpen dit niet en tonen dan een letterlijk tekstbericht."
-        },
-        "error": {
-          "invalid_mirror_target": "Een van de opgegeven doelen is geen geldige notify-entiteit of servicenaam."
         }
       }
+    },
+    "error": {
+      "invalid_mirror_target": "Een van de opgegeven doelen is geen geldige notify-entiteit of servicenaam."
     },
     "abort": {
       "single_instance_allowed": "Notify Dashboard is al geconfigureerd."
@@ -30,16 +30,17 @@
     "step": {
       "init": {
         "title": "Notify Dashboard instellingen",
+        "description": "Kies welke notify-doelen ook een `clear_notification` moeten krijgen wanneer een melding op het dashboard gesloten wordt — ook automatisch, bij een timeout of wanneer de bewaarlimiet iets verwijdert, niet alleen bij handmatig sluiten. Leeg laten om doorsturen uit te schakelen.",
         "data": {
           "mirror_dismiss_to": "Meldingen ook wissen op"
         },
         "data_description": {
           "mirror_dismiss_to": "Toont notify-entiteiten en legacy notify-services/groepen. Werkt alleen voor Companion App (mobile_app)-doelen — andere notify-integraties begrijpen dit niet en tonen dan een letterlijk tekstbericht."
-        },
-        "error": {
-          "invalid_mirror_target": "Een van de opgegeven doelen is geen geldige notify-entiteit of servicenaam."
         }
       }
+    },
+    "error": {
+      "invalid_mirror_target": "Een van de opgegeven doelen is geen geldige notify-entiteit of servicenaam."
     }
   },
   "exceptions": {

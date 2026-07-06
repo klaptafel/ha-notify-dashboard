@@ -31,6 +31,13 @@ async def test_english_config_and_options_translations_resolve(hass):
         config["component.notify_dashboard.config.step.user.data.mirror_dismiss_to"]
         == "Also clear notifications on"
     )
+    # error must be a sibling of step (like abort), not nested inside a
+    # step's own dict — hassfest's data-entry-flow schema has no "error" key
+    # inside an individual step and rejects it as an unknown key.
+    assert (
+        config["component.notify_dashboard.config.error.invalid_mirror_target"]
+        == "One of the entered targets isn't a valid notify entity or service name."
+    )
 
     options = await translation.async_get_translations(
         hass, "en", "options", integrations={"notify_dashboard"}
@@ -38,4 +45,8 @@ async def test_english_config_and_options_translations_resolve(hass):
     assert (
         options["component.notify_dashboard.options.step.init.data.mirror_dismiss_to"]
         == "Also clear notifications on"
+    )
+    assert (
+        options["component.notify_dashboard.options.error.invalid_mirror_target"]
+        == "One of the entered targets isn't a valid notify entity or service name."
     )
