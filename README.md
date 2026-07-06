@@ -74,7 +74,24 @@ data:
     progress_max: 100
 ```
 
-Also supported, same as the Companion App: `chronometer`/`when` (live countdown), `critical_text`, `actions`, `subtitle`, `color` (accent), `progress_indeterminate`.
+### Supported `data` fields
+
+| Field | Applies to | Does |
+|---|---|---|
+| `tag` | Any | Sending the same `tag` again replaces it in place; `clear_notification` + `tag` removes it. |
+| `group` | Any | Free-form label for grouping/filtering (`filter_groups`). |
+| `live_update: true` | — | Tracks it as a live activity instead of a regular notification. |
+| `persistent: true` | Any | Excluded from `dismiss_all`; can't be dismissed from the card or the `dismiss` service. |
+| `timeout` | Notification only | Seconds until auto-removal. Without it, a notification is only capped by the 30-day/100-item retention limit — live activities never use `timeout`; they expire 8h after their last update instead. |
+| `notification_icon` / `notification_icon_color` | Any | Icon override and its background wash color. |
+| `color` | Any | Accent background wash for the whole row. |
+| `url` / `clickAction` | Any | Makes the row tappable and shows an explicit Open button. |
+| `actions` | Any | Array of `{action, title, action_data, destructive}` → pill buttons that fire `mobile_app_notification_action` on tap. |
+| `subtitle` / `subject` | Any | Secondary line under the title. |
+| `critical_text` | Live activity | Short text under the title (shares its slot with `chronometer` — the timer wins if both are set). |
+| `chronometer` / `when` / `when_relative` | Live activity | Live-ticking countdown/count-up under the title, updated client-side every second. |
+| `progress` / `progress_max` | Live activity | Progress bar with a live percentage — both fields required. |
+| `progress_indeterminate: true` | Live activity | Sliding indeterminate bar, used when there's no concrete `progress` to show. |
 
 Clear a notification or live activity the same way the app does:
 
