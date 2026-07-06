@@ -1,11 +1,16 @@
-# Brand assets — staging
+# Brand assets
 
-This folder is not part of what Home Assistant itself uses to display the
-integration (HA fetches brand icons separately, by domain, from the public
-[home-assistant/brands](https://github.com/home-assistant/brands) repo) — it's
-just a staging spot until the assets actually go out as a PR to that repo,
-under `custom_integrations/notify_dashboard/`. Once they're ready: drop them
-here and carry the folder over 1-to-1 into that PR.
+HACS's own repository validation checks this exact path
+(`custom_components/notify_dashboard/brand/icon.png`) directly and only
+falls back to checking the public
+[home-assistant/brands](https://github.com/home-assistant/brands) repo if
+it's missing — so these files are live for HACS purposes as-is.
+
+Home Assistant core itself is a separate story: it still fetches brand
+icons for its own UI (device pages, integration list, ...) from that public
+brands repo, by domain, not from here. Submitting this folder as a PR under
+`custom_integrations/notify_dashboard/` there is what's needed to get the
+icon showing up in HA's own UI, not just HACS's listing.
 
 ## Expected files
 
