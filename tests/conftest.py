@@ -140,10 +140,31 @@ async def loaded_store(hass):
     async_track_time_interval re-arms itself recursively — if a test doesn't
     unsub before ending, the hass fixture's teardown fails the *next* test
     with a "lingering timer" assertion, not this one. Always go through this
-    fixture instead of constructing a store directly in a test that needs
-    the periodic timer.
+    fixture (or loaded_store_factory below, for the on_removed case) instead
+    of constructing a store directly in a test that needs the periodic timer.
     """
     store = NotifyDashboardStore(hass)
     await store.async_load()
     yield store
     store._unsub_periodic_cleanup()
+
+
+@pytest.fixture
+def loaded_store_factory(hass):
+    """Same guarantee as loaded_store, for tests that need a custom
+    on_removed callback (loaded_store itself never passes one). Every store
+    built through this factory gets its periodic cleanup timer unsubscribed
+    on teardown, whether the test builds one store or several.
+    """
+    stores: list[NotifyDashboardStore] = []
+
+    async def _make(on_removed=None) -> NotifyDashboardStore:
+        store = NotifyDashboardStore(hass, on_removed=on_removed)
+        await store.async_load()
+        stores.append(store)
+        return store
+
+    yield _make
+
+    for store in stores:
+        store._unsub_periodic_cleanup()

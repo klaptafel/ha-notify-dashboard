@@ -17,6 +17,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from . import get_domain_data
+from .store import is_persistent, live_activities_list
 
 
 async def async_get_config_entry_diagnostics(
@@ -26,7 +27,7 @@ async def async_get_config_entry_diagnostics(
     domain_data = get_domain_data(hass)
     store_data = domain_data["store"].data
     notifications = store_data["notifications"]
-    live_activities = list(store_data["live_activities"].values())
+    live_activities = live_activities_list(store_data)
 
     return {
         "config": {
@@ -34,9 +35,7 @@ async def async_get_config_entry_diagnostics(
         },
         "notifications": {
             "count": len(notifications),
-            "persistent_count": sum(
-                1 for n in notifications if n.get("data", {}).get("persistent")
-            ),
+            "persistent_count": sum(1 for n in notifications if is_persistent(n)),
             "oldest_created_at": min(
                 (n["created_at"] for n in notifications), default=None
             ),

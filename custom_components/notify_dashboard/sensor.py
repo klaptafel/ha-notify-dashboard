@@ -14,6 +14,7 @@ from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from . import get_domain_data
 from .const import DOMAIN, SIGNAL_UPDATE
+from .store import live_activities_list
 
 
 async def async_setup_platform(
@@ -46,7 +47,7 @@ class NotifyDashboardSensor(SensorEntity):
         store = get_domain_data(self.hass)["store"]
         data = store.data
         notifications = data["notifications"]
-        live_activities = list(data["live_activities"].values())
+        live_activities = live_activities_list(data)
         self._attr_native_value = len(notifications) + len(live_activities)
         self._attr_extra_state_attributes = {
             "notifications": notifications,

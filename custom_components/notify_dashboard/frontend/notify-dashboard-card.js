@@ -29,8 +29,6 @@ const CARD_DEFAULTS = {
   hide_when_empty: false,
   default_icon: 'mdi:bell-outline',
   default_icon_color: 'var(--primary-color)',
-  hold_action: { action: 'none' },
-  double_tap_action: { action: 'none' },
   confirm_dismiss: false,
   show_open_action: true,
 };
@@ -905,9 +903,6 @@ class NotifyDashboardCard extends HTMLElement {
 
 // Visual editor — tab skeleton (tab bar, _fire/_ownFire echo protection,
 // ha-switch/ha-form rows) taken 1-to-1 from package-tracker-card.
-// hold_action/double_tap_action are deliberately not included: that config
-// isn't wired to any handler anywhere (no tap actions on the card yet), so
-// an editor field for it would suggest something that does nothing.
 class NotifyDashboardCardEditor extends HTMLElement {
   constructor() {
     super();
@@ -947,6 +942,10 @@ class NotifyDashboardCardEditor extends HTMLElement {
     return { ...CARD_DEFAULTS, ...config };
   }
 
+  _uiTr() {
+    return EDITOR_TRANSLATIONS[this._hass?.language] || EDITOR_TRANSLATIONS['en'];
+  }
+
   _fire(config) {
     // Deliberately no re-render here: every row in _renderContent /
     // _renderFilter / _renderAppearance is unconditional (none of them
@@ -966,7 +965,7 @@ class NotifyDashboardCardEditor extends HTMLElement {
     root.innerHTML = '';
     root.appendChild(Object.assign(document.createElement('style'), { textContent: EDITOR_CSS }));
 
-    const uiTr = EDITOR_TRANSLATIONS[this._hass?.language] || EDITOR_TRANSLATIONS['en'];
+    const uiTr = this._uiTr();
     const card = mk('div', 'editor-card');
     const tabBar = mk('div', 'tab-bar');
     [
@@ -1013,7 +1012,7 @@ class NotifyDashboardCardEditor extends HTMLElement {
     const root = this._content;
     const c = this._config;
     const content = c.content || [];
-    const uiTr = EDITOR_TRANSLATIONS[this._hass?.language] || EDITOR_TRANSLATIONS['en'];
+    const uiTr = this._uiTr();
 
     root.appendChild(mk('div', 'section-label', uiTr.source_section));
     const sourceGroup = mk('div', 'settings-group');
@@ -1079,7 +1078,7 @@ class NotifyDashboardCardEditor extends HTMLElement {
   _renderFilter() {
     const root = this._content;
     const c = this._config;
-    const uiTr = EDITOR_TRANSLATIONS[this._hass?.language] || EDITOR_TRANSLATIONS['en'];
+    const uiTr = this._uiTr();
 
     root.appendChild(mk('div', 'section-label', uiTr.filter_section));
     const group = mk('div', 'settings-group');
@@ -1119,7 +1118,7 @@ class NotifyDashboardCardEditor extends HTMLElement {
   _renderAppearance() {
     const root = this._content;
     const c = this._config;
-    const uiTr = EDITOR_TRANSLATIONS[this._hass?.language] || EDITOR_TRANSLATIONS['en'];
+    const uiTr = this._uiTr();
 
     root.appendChild(mk('div', 'section-label', uiTr.appearance_section));
     const group = mk('div', 'settings-group');

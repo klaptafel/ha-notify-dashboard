@@ -38,10 +38,11 @@ from .const import (
     CONF_MIRROR_DISMISS_TO,
     DOMAIN,
     EVENT_NOTIFICATION_ACTION,
-    NOTIFY_ENTITY_DOMAIN,
     SERVICE_DISMISS,
     SERVICE_DISMISS_ALL,
     SERVICE_FIRE_ACTION,
+    is_mirror_entity,
+    validate_mirror_target,
 )
 from .store import (
     NotificationNotDismissableError,
@@ -68,25 +69,12 @@ def get_domain_data(hass: HomeAssistant) -> NotifyDashboardData:
     return cast(NotifyDashboardData, hass.data[DOMAIN])
 
 
-def _validate_mirror_target(value: str) -> str:
-    """A mirror_dismiss_to entry is either a notify entity id (contains a
-    dot, e.g. "notify.mobile_app_pixel") or a bare legacy notify service
-    name (never a dot, e.g. "family_notifications" from a YAML `notify: -
-    platform: group` — that one has no entity at all). See
-    config_flow.py's _mirror_dismiss_options for the full reasoning, and
-    _async_mirror_clear below for how each is dispatched.
-    """
-    if "." in value:
-        return cv.entity_domain(NOTIFY_ENTITY_DOMAIN)(cv.entity_id(value))
-    return cv.slug(value)
-
-
 CONFIG_SCHEMA = vol.Schema(
     {
         DOMAIN: vol.Schema(
             {
                 vol.Optional(CONF_MIRROR_DISMISS_TO, default=[]): vol.All(
-                    cv.ensure_list, [_validate_mirror_target]
+                    cv.ensure_list, [validate_mirror_target]
                 ),
             }
         )
@@ -169,7 +157,6 @@ async def _async_ensure_core(hass: HomeAssistant, config: ConfigType) -> None:
             await asyncio.gather(*(_async_mirror_clear(hass, tag) for tag in tags))
 
     store = NotifyDashboardStore(hass, on_removed=_on_removed)
-    await store.async_load()
 
     data: NotifyDashboardData = {
         "store": store,
@@ -177,10 +164,14 @@ async def _async_ensure_core(hass: HomeAssistant, config: ConfigType) -> None:
     }
     hass.data[DOMAIN] = data
 
-    # Serve the card/badge JS from the integration itself.
+    # Independent of each other (neither's result feeds the other) — no
+    # reason to await them one after the other on the setup path.
     frontend_path = Path(__file__).parent / "frontend"
-    await hass.http.async_register_static_paths(
-        [StaticPathConfig(FRONTEND_URL_BASE, str(frontend_path), cache_headers=False)]
+    await asyncio.gather(
+        store.async_load(),
+        hass.http.async_register_static_paths(
+            [StaticPathConfig(FRONTEND_URL_BASE, str(frontend_path), cache_headers=False)]
+        ),
     )
 
     # Wait until HA is fully started before registering the Lovelace
@@ -203,7 +194,11 @@ async def _async_ensure_core(hass: HomeAssistant, config: ConfigType) -> None:
     async def handle_dismiss(call: ServiceCall) -> None:
         item_id = call.data[ATTR_ID]
         try:
-            item = await store.async_dismiss(item_id)
+            # Mirror-forwarding (if a tag's involved and mirror_dismiss_to is
+            # configured) happens inside async_dismiss itself via the
+            # on_removed callback set up above — same single mechanism used
+            # for every other way an item can leave the store.
+            await store.async_dismiss(item_id)
         except NotificationNotFoundError as err:
             raise ServiceValidationError(
                 translation_domain=DOMAIN,
@@ -217,15 +212,8 @@ async def _async_ensure_core(hass: HomeAssistant, config: ConfigType) -> None:
                 translation_placeholders={"item_id": item_id},
             ) from err
 
-        tag = item.get("tag")
-        if tag and get_domain_data(hass)["mirror_dismiss_to"]:
-            await _async_mirror_clear(hass, tag)
-
     async def handle_dismiss_all(call: ServiceCall) -> None:
-        cleared = await store.async_dismiss_all_notifications()
-        if get_domain_data(hass)["mirror_dismiss_to"]:
-            tags = [tag for item in cleared if (tag := item.get("tag"))]
-            await asyncio.gather(*(_async_mirror_clear(hass, tag) for tag in tags))
+        await store.async_dismiss_all_notifications()
 
     async def handle_fire_action(call: ServiceCall) -> None:
         # Fires hass.bus.async_fire server-side instead of letting the card
@@ -303,43 +291,25 @@ async def _async_mirror_clear(hass: HomeAssistant, tag: str) -> None:
     service registered directly under the notify domain with no entity at
     all, the only way to reach e.g. a YAML `notify: - platform: group` (or
     any other BaseNotificationService-based integration, including this
-    one). _validate_mirror_target/_mirror_dismiss_options establish the
-    same rule this uses to tell them apart: an entity id always has a dot,
-    a bare service name never does.
+    one). is_mirror_entity/validate_mirror_target/_mirror_dismiss_options
+    establish the same rule this uses to tell them apart: an entity id
+    always has a dot, a bare service name never does.
     Targets are independent of each other, so fire them in parallel instead
     of waiting on each one in turn.
     """
 
     async def _clear_one(target: str) -> None:
         issue_id = _mirror_target_issue_id(target)
-        payload = {"message": "clear_notification", "data": {"tag": tag}}
-
-        if "." in target:
-            if hass.states.get(target) is None:
-                # A target service call with no matching entity just
-                # silently does nothing (no exception) — the try/except
-                # below can't catch this case at all, so it's checked
-                # explicitly here.
-                ir.async_create_issue(
-                    hass,
-                    DOMAIN,
-                    issue_id,
-                    is_fixable=False,
-                    severity=ir.IssueSeverity.WARNING,
-                    translation_key="missing_mirror_target",
-                    translation_placeholders={"entity_id": target},
-                )
-                return
-            ir.async_delete_issue(hass, DOMAIN, issue_id)
-            try:
-                await hass.services.async_call(
-                    "notify", "send_message", payload, target={"entity_id": target}, blocking=False
-                )
-            except Exception:  # noqa: BLE001
-                _LOGGER.warning("Could not forward clear_notification to %s", target)
-            return
-
-        if not hass.services.has_service("notify", target):
+        is_entity = is_mirror_entity(target)
+        # A target service call with no matching entity/service just
+        # silently does nothing (no exception) — the try/except below can't
+        # catch this case at all, so it's checked explicitly here.
+        exists = (
+            hass.states.get(target) is not None
+            if is_entity
+            else hass.services.has_service("notify", target)
+        )
+        if not exists:
             ir.async_create_issue(
                 hass,
                 DOMAIN,
@@ -351,10 +321,17 @@ async def _async_mirror_clear(hass: HomeAssistant, tag: str) -> None:
             )
             return
         ir.async_delete_issue(hass, DOMAIN, issue_id)
+
+        payload = {"message": "clear_notification", "data": {"tag": tag}}
         try:
-            # The service name itself is the target here — a raw legacy
-            # service call, not the entity-based target selector above.
-            await hass.services.async_call("notify", target, payload, blocking=False)
+            if is_entity:
+                await hass.services.async_call(
+                    "notify", "send_message", payload, target={"entity_id": target}, blocking=False
+                )
+            else:
+                # The service name itself is the target here — a raw
+                # legacy service call, not the entity-based target selector.
+                await hass.services.async_call("notify", target, payload, blocking=False)
         except Exception:  # noqa: BLE001
             _LOGGER.warning("Could not forward clear_notification to %s", target)
 

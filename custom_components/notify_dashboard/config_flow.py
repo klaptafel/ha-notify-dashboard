@@ -16,12 +16,12 @@ from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
 
-from . import _validate_mirror_target
 from .const import (
     CONF_MIRROR_DISMISS_TO,
     DOMAIN,
     NOTIFY_ENTITY_DOMAIN,
     RESERVED_NOTIFY_SERVICES,
+    validate_mirror_target,
 )
 
 
@@ -37,8 +37,8 @@ def _mirror_dismiss_options(hass: HomeAssistant) -> list[dict[str, str]]:
     else (confirmed: this isn't fixed by restarting HA either).
 
     Entity ids always contain a dot (`notify.xxx`); legacy service names
-    never do (`xxx`) — that's also how _async_mirror_clear later tells them
-    apart to dispatch each one correctly.
+    never do (`xxx`) — is_mirror_entity in const.py is the shared rule
+    __init__.py's dispatch later uses to tell them apart.
     """
     entity_options = [
         {"value": entity_id, "label": entity_id}
@@ -58,7 +58,7 @@ def _mirror_dismiss_schema(hass: HomeAssistant, default: list[str]) -> vol.Schem
             # custom_value lets a user type something not in the dropdown
             # (e.g. a target that isn't set up yet) — but the selector
             # itself validates nothing about *what* was typed, so
-            # _validate_mirror_target still runs afterward on every entry,
+            # validate_mirror_target still runs afterward on every entry,
             # same as the YAML path in __init__.py's CONFIG_SCHEMA. Without
             # this, the UI would silently accept a value YAML would reject
             # outright (confirmed empirically: the select selector passes
@@ -74,7 +74,7 @@ def _mirror_dismiss_schema(hass: HomeAssistant, default: list[str]) -> vol.Schem
                         }
                     }
                 ),
-                [_validate_mirror_target],
+                [validate_mirror_target],
             )
         }
     )

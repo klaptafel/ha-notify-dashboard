@@ -21,7 +21,6 @@ from custom_components.notify_dashboard.sensor import (
     NotifyDashboardSensor,
     async_setup_platform,
 )
-from custom_components.notify_dashboard.store import NotifyDashboardStore
 
 
 async def _add_sensor(hass) -> NotifyDashboardSensor:
@@ -84,21 +83,16 @@ async def test_sensor_updates_reactively_via_dispatcher(hass, loaded_store):
     assert hass.states.get(sensor.entity_id).state == "1"
 
 
-async def test_sensor_no_update_without_signal(hass):
+async def test_sensor_no_update_without_signal(hass, loaded_store):
     """Without a dispatcher signal (or initial add), state must not change —
     should_poll is False, so nothing should refresh it on its own."""
-    store = NotifyDashboardStore(hass)
-    await store.async_load()
-    try:
-        hass.data[DOMAIN] = {"store": store}
-        sensor = await _add_sensor(hass)
-        assert hass.states.get(sensor.entity_id).state == "0"
+    hass.data[DOMAIN] = {"store": loaded_store}
+    sensor = await _add_sensor(hass)
+    assert hass.states.get(sensor.entity_id).state == "0"
 
-        # Mutate the store WITHOUT going through a method that dispatches.
-        store.data["notifications"].append({"id": "x"})
-        assert hass.states.get(sensor.entity_id).state == "0"  # stale until a signal fires
+    # Mutate the store WITHOUT going through a method that dispatches.
+    loaded_store.data["notifications"].append({"id": "x"})
+    assert hass.states.get(sensor.entity_id).state == "0"  # stale until a signal fires
 
-        async_dispatcher_send(hass, SIGNAL_UPDATE)
-        assert hass.states.get(sensor.entity_id).state == "1"
-    finally:
-        store._unsub_periodic_cleanup()
+    async_dispatcher_send(hass, SIGNAL_UPDATE)
+    assert hass.states.get(sensor.entity_id).state == "1"

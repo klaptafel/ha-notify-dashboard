@@ -78,10 +78,6 @@ max_items: 0                # 0 = no limit
 hide_when_empty: false
 default_icon: mdi:bell-outline
 default_icon_color: var(--primary-color)
-hold_action:
-  action: none
-double_tap_action:
-  action: none
 confirm_dismiss: false     # ask for confirmation before dismissing
 show_open_action: true     # show an explicit "Open" button for items with a url
 ```

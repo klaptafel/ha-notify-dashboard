@@ -1,4 +1,7 @@
 """Constants for Notify Dashboard."""
+from __future__ import annotations
+
+from homeassistant.helpers import config_validation as cv
 
 DOMAIN = "notify_dashboard"
 
@@ -14,6 +17,27 @@ NOTIFY_ENTITY_DOMAIN = "notify"
 # a real target — it always needs its own target selector, so it's excluded
 # from the raw-service picker in config_flow.py.
 RESERVED_NOTIFY_SERVICES = {"send_message"}
+
+
+def is_mirror_entity(target: str) -> bool:
+    """Entity ids always contain a dot (`notify.xxx`); legacy service names
+    never do (`xxx`) — the one rule __init__.py's dispatch, this module's
+    own validator below, and config_flow.py's picker all share to tell the
+    two kinds of mirror_dismiss_to target apart."""
+    return "." in target
+
+
+def validate_mirror_target(value: str) -> str:
+    """A mirror_dismiss_to entry is either a notify entity id or a bare
+    legacy notify service name (e.g. "family_notifications" from a YAML
+    `notify: - platform: group` — that one has no entity at all). Shared
+    by __init__.py's CONFIG_SCHEMA (the YAML path) and config_flow.py's
+    options/config flow schema (the UI path) — both need the exact same
+    rule, not just the same intent independently reimplemented.
+    """
+    if is_mirror_entity(value):
+        return cv.entity_domain(NOTIFY_ENTITY_DOMAIN)(cv.entity_id(value))
+    return cv.slug(value)
 
 # Storage
 STORAGE_VERSION = 1

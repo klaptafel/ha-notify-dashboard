@@ -78,6 +78,17 @@ class NotificationNotDismissableError(Exception):
     """
 
 
+def is_persistent(entry: NotificationEntry) -> bool:
+    return bool(entry.get("data", {}).get("persistent"))
+
+
+def live_activities_list(data: NotifyDashboardStoreData) -> list[LiveActivityEntry]:
+    """live_activities is keyed by tag internally, but every consumer
+    (sensor attributes, diagnostics) wants it as a plain list — shared here
+    instead of each one re-deriving list(data["live_activities"].values())."""
+    return list(data["live_activities"].values())
+
+
 class NotifyDashboardStore:
     """Wraps a single HA Store holding notifications + live_activities."""
 
@@ -90,15 +101,14 @@ class NotifyDashboardStore:
         self._store: Store[NotifyDashboardStoreData] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._data: NotifyDashboardStoreData = {"notifications": [], "live_activities": {}}
         self._unsub_periodic_cleanup: CALLBACK_TYPE | None = None
-        # Called with the tags of anything removed other than through the
-        # dismiss/dismiss_all services (which already forward to
-        # mirror_dismiss_to themselves, at the __init__.py level): automatic
-        # cleanup (age/timeout expiry, live-activity staleness, the
-        # MAX_NOTIFICATIONS hard cap — see _cleanup) and an explicit
-        # clear_notification sent straight to notify.dashboard (see
-        # async_clear_by_tag) both disappear from the dashboard exactly like
-        # a dismiss does, so they get the same mirror-forwarding treatment.
-        # Not invoked from async_load()'s startup cleanup: hass.data[DOMAIN]
+        # Called with the tags of anything that leaves the store, by any
+        # means — dismiss/dismiss_all, automatic cleanup (age/timeout
+        # expiry, live-activity staleness, the MAX_NOTIFICATIONS hard cap —
+        # see _cleanup), and an explicit clear_notification sent straight to
+        # notify.dashboard (see async_clear_by_tag). One mechanism for all
+        # of them, since they all disappear from the dashboard exactly like
+        # each other and need the same mirror-forwarding treatment. Not
+        # invoked from async_load()'s startup cleanup: hass.data[DOMAIN]
         # (which the caller's callback needs) isn't populated yet then.
         self._on_removed = on_removed
 
@@ -144,7 +154,7 @@ class NotifyDashboardStore:
     def _cleanup(self) -> list[str]:
         """Remove expired notifications and stale live activities.
 
-        Returns the tags of anything actually removed — see _on_expired.
+        Returns the tags of anything actually removed — see _on_removed.
         """
         now = time.time()
         max_age = MAX_AGE_DAYS * 86400
@@ -256,15 +266,18 @@ class NotifyDashboardStore:
         notifications = self._data["notifications"]
         match = next((n for n in notifications if n["id"] == item_id), None)
         if match is not None:
-            if match.get("data", {}).get("persistent"):
+            if is_persistent(match):
                 raise NotificationNotDismissableError(item_id)
             notifications.remove(match)
             await self._async_save()
+            if tag := match.get("tag"):
+                await self._notify_removed([tag])
             return match
 
         if item_id in self._data["live_activities"]:
             item = self._data["live_activities"].pop(item_id)
             await self._async_save()
+            await self._notify_removed([item["tag"]])
             return item
 
         raise NotificationNotFoundError(item_id)
@@ -272,17 +285,17 @@ class NotifyDashboardStore:
     async def async_dismiss_all_notifications(self) -> list[NotificationEntry]:
         """Remove all non-persistent notifications.
 
-        Returns the removed items — same shape as async_dismiss — so the
-        caller can apply mirror_dismiss_to to them just like a single
-        dismiss, now for the bulk variant too.
+        Returns the removed items — same shape as async_dismiss.
         """
         kept = []
         cleared = []
         for n in self._data["notifications"]:
-            if n.get("data", {}).get("persistent"):
+            if is_persistent(n):
                 kept.append(n)
             else:
                 cleared.append(n)
         self._data["notifications"] = kept
         await self._async_save()
+        tags = [tag for item in cleared if (tag := item.get("tag"))]
+        await self._notify_removed(tags)
         return cleared
