@@ -38,10 +38,10 @@
   },
   "exceptions": {
     "notification_not_found": {
-      "message": "Geen melding gevonden met id '{item_id}'."
+      "message": "Geen melding gevonden met id {item_id}."
     },
     "notification_not_dismissable": {
-      "message": "'{item_id}' kan niet worden gesloten — deze melding is persistent."
+      "message": "{item_id} kan niet worden gesloten — deze melding is persistent."
     }
   },
   "issues": {

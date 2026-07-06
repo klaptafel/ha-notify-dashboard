@@ -52,7 +52,7 @@ notify:
 
 No manual Lovelace resource needed — the integration registers the card's JS itself as soon as it's set up.
 
-Edit a dashboard → **Add card** → search for "Notify Dashboard" to use the visual editor (Inhoud / Filter / Weergave tabs), or pick **Manual** and paste YAML directly:
+Edit a dashboard → **Add card** → search for "Notify Dashboard" to use the visual editor (Source / Filter / Appearance tabs), or pick **Manual** and paste YAML directly. The editor only shows the settings most people need — the visual editor writes out just what you actually change, defaults are never persisted into the saved YAML.
 
 **Minimal:**
 
@@ -60,7 +60,7 @@ Edit a dashboard → **Add card** → search for "Notify Dashboard" to use the v
 type: custom:notify-dashboard-card
 ```
 
-**Full:**
+**Full** (including a few YAML-only options not in the visual editor — see below):
 
 ```yaml
 type: custom:notify-dashboard-card
@@ -69,17 +69,20 @@ layout: single              # or: split
 content:
   - live_activities
   - notifications
-group_order: live_first     # or: notifications_first / chronological
 filter_tags: []           # only show these tags (empty = all)
 filter_groups: []         # only show these groups (empty = all)
 filter_tags_exclude: []   # hide these tags, wins over filter_tags
 filter_groups_exclude: [] # hide these groups, wins over filter_groups
 max_items: 0                # 0 = no limit
 hide_when_empty: false
-default_icon: mdi:bell-outline
-default_icon_color: var(--primary-color)
 confirm_dismiss: false     # ask for confirmation before dismissing
 show_open_action: true     # show an explicit "Open" button for items with a url
+
+# YAML-only — not in the visual editor, since the defaults are already the
+# intended behavior and don't need to be a user-facing decision:
+group_order: live_first     # or: notifications_first / chronological
+default_icon: mdi:bell-outline
+default_icon_color: var(--primary-color)
 ```
 
 ---
@@ -219,6 +222,22 @@ Stored data lives in `.storage/notify_dashboard.notifications` — delete that f
 ## How data updates
 
 The dashboard sensor (`sensor.notify_dashboard`) is push-based, not polled — it updates immediately whenever a notification/live activity is added, dismissed, or expires (a 15-second background cleanup timer removes anything past its timeout/max-age, no manual "refresh" needed). The card itself only re-renders the rows that actually changed, so an unrelated update elsewhere in the list won't reset an in-progress chronometer/countdown.
+
+---
+
+## Debugging
+
+YAML-only — not in the visual editor, since it's a debugging aid rather than a real feature. Shows the raw `tag`/`group`/`timeout` of each notification as small chips, so you can check what actually arrived without opening dev tools:
+
+```yaml
+type: custom:notify-dashboard-card
+debug:
+  tag: true
+  group: true
+  timeout: true
+```
+
+Only shows a chip for a field that's actually present on that item — a notification without a `group` just won't get a group chip, for example.
 
 ---
 

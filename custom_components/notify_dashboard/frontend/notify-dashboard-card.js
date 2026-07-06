@@ -31,6 +31,11 @@ const CARD_DEFAULTS = {
   default_icon_color: 'var(--primary-color)',
   confirm_dismiss: false,
   show_open_action: true,
+  // YAML-only — deliberately not in the visual editor (see
+  // NotifyDashboardCardEditor's header comment): this is a debugging aid,
+  // not a real feature, so an editor field for it would just invite
+  // permanently-on debug metadata nobody meant to keep.
+  debug: { tag: false, group: false, timeout: false },
 };
 
 const CARD_CSS = `
@@ -41,21 +46,18 @@ const CARD_CSS = `
   }
   :host(.hidden) { display: none !important; margin: 0 !important; padding: 0 !important; min-height: 0 !important; }
 
-  /* An inset box-shadow instead of a real border-left/text/background
-     color: color is user-supplied and arbitrary, so using it for text or a
-     large background wash risks failing WCAG contrast against
-     title/message. A thin accent stripe is decorative, not a text/UI-
-     boundary contrast requirement, so it stays safe regardless of which
-     color comes in. box-shadow (unlike border) paints without taking up
-     any box-model space — a real border-left here would sit outside the
-     16px padding, insetting the icon by 4px more on the left (20px) than
-     content/dismiss get on the right (16px, no border-right there) — a
-     small but real left/right asymmetry a box-shadow avoids entirely.
-     Transparent by default so rows without a color still line up exactly
-     like rows with one. */
+  /* A low-opacity color-mix wash over the row background, not solid text/
+     background: color is user-supplied and arbitrary, so a full-strength
+     fill risks failing WCAG contrast against title/message text, which
+     keeps using the theme's own --primary-text-color regardless. Mixing at
+     a low percentage keeps it a subtle tint layered on top of the card's
+     own background (rather than a flat replacement) so it still reads
+     correctly over busy wallpapers and holds up in both light and dark
+     themes. Transparent by default so rows without a color still look
+     exactly like any other row. */
   .row {
     display: flex; flex-direction: column; padding: 12px 16px; gap: 14px;
-    box-shadow: inset 4px 0 0 0 transparent;
+    background: transparent;
   }
   .row + .row { border-top: 1px solid var(--divider-color, rgba(0,0,0,.06)); }
 
@@ -121,6 +123,17 @@ const CARD_CSS = `
     font-size: var(--ha-font-size-xs, 11px); color: var(--secondary-text-color);
     margin-top: 3px;
   }
+  /* debug metadata (tag/group/timeout) — same shape as package-tracker-card's
+     .carrier row: plain inline icon+text pairs joined by a "·" separator, no
+     pill/background/border-radius (confirmed directly against its actual
+     source — no chip/pill class exists there at all). */
+  .debug-row {
+    font-size: var(--ha-font-size-xs, 11px); color: var(--secondary-text-color);
+    line-height: var(--ha-line-height-condensed, 1.3);
+    margin-top: 4px; display: flex; align-items: center; gap: 3px; flex-wrap: wrap;
+  }
+  .debug-row ha-icon { --mdc-icon-size: 13px; flex-shrink: 0; }
+  .debug-sep { margin: 0 2px; opacity: .5; }
   /* Lives *inside* .content's .header-line, next to title — not as a
      separate box next to .content in row-main. .content vertically centers
      short content against the 38px icon (min-height + justify-content:
@@ -252,6 +265,11 @@ const EDITOR_CSS = `
   .srow-text { flex: 1; min-width: 0; }
   .srow-label { font-size: 14px; color: var(--primary-text-color); display: block; }
   .srow-desc { font-size: 12px; color: var(--secondary-text-color); display: block; margin-top: 1px; }
+  .version-link {
+    display: block; font-size: 11px; color: var(--secondary-text-color); text-decoration: none;
+    text-align: center; padding: 10px 16px 12px; border-top: 1px solid var(--divider-color);
+  }
+  .version-link:hover { text-decoration: underline; }
   ha-switch { flex-shrink: 0; }
 `;
 
@@ -260,12 +278,11 @@ const EDITOR_CSS = `
 // Dutch is supported as an additional language, not the other way around.
 const EDITOR_TRANSLATIONS = {
   nl: {
-    content_tab: 'Inhoud',
+    content_tab: 'Bron',
     filter_tab: 'Filter',
     appearance_tab: 'Weergave',
     source_section: 'Bron',
     content_section: 'Inhoud',
-    filter_section: 'Filter',
     appearance_section: 'Weergave',
     behaviour_section: 'Gedrag',
     entity: 'Entiteit',
@@ -275,36 +292,25 @@ const EDITOR_TRANSLATIONS = {
     layout: 'Indeling',
     layout_single: 'Eén kaart',
     layout_split: 'Losse kaarten',
-    layout_desc: 'Eén kaart: live activities en notifications samen. Losse kaarten: allebei hun eigen kaart',
-    group_order: 'Groepsvolgorde',
-    group_order_live_first: 'Live activities eerst',
-    group_order_notifications_first: 'Notifications eerst',
-    group_order_chronological: 'Chronologisch (door elkaar)',
     max_items: 'Max. aantal items',
     max_items_desc: '0 = geen limiet',
-    filter_tags: 'Tags (alleen deze tonen)',
-    filter_groups: 'Groepen (alleen deze tonen)',
-    filter_tags_exclude: 'Tags (verbergen)',
-    filter_groups_exclude: 'Groepen (verbergen)',
+    filter_tags_section: 'Tags',
+    filter_groups_section: 'Groepen',
+    filter_include: 'Alleen deze tonen',
+    filter_exclude: 'Verbergen',
     filter_desc: 'Komma-gescheiden, leeg = alles',
-    filter_exclude_desc: 'Komma-gescheiden; wint van de lijst hierboven',
+    filter_exclude_desc: 'Komma-gescheiden; wint van het veld hierboven',
     hide_when_empty: 'Verberg kaart als leeg',
-    default_icon: 'Standaardicoon',
-    default_icon_desc: 'Gebruikt als een melding geen eigen icoon meegeeft',
-    default_icon_color: 'Standaardkleur',
-    default_icon_color_desc: 'CSS-kleur of var(--token)',
     confirm_dismiss: 'Bevestiging bij dismissen',
     show_open_action: 'Open-knop tonen',
-    show_open_action_desc:
-      'Toont een Open-knop op meldingen die een url meegeven; de knop opent die url',
+    show_open_action_desc: 'Getoond bij een item met een url; opent die.',
   },
   en: {
-    content_tab: 'Content',
+    content_tab: 'Source',
     filter_tab: 'Filter',
     appearance_tab: 'Appearance',
     source_section: 'Source',
     content_section: 'Content',
-    filter_section: 'Filter',
     appearance_section: 'Appearance',
     behaviour_section: 'Behaviour',
     entity: 'Entity',
@@ -314,28 +320,18 @@ const EDITOR_TRANSLATIONS = {
     layout: 'Layout',
     layout_single: 'Single card',
     layout_split: 'Split cards',
-    layout_desc: 'Single card: live activities and notifications together. Split cards: each gets its own card',
-    group_order: 'Group order',
-    group_order_live_first: 'Live activities first',
-    group_order_notifications_first: 'Notifications first',
-    group_order_chronological: 'Chronological (mixed)',
     max_items: 'Max. items',
     max_items_desc: '0 = no limit',
-    filter_tags: 'Tags (only show these)',
-    filter_groups: 'Groups (only show these)',
-    filter_tags_exclude: 'Tags (hide these)',
-    filter_groups_exclude: 'Groups (hide these)',
+    filter_tags_section: 'Tags',
+    filter_groups_section: 'Groups',
+    filter_include: 'Only show these',
+    filter_exclude: 'Hide these',
     filter_desc: 'Comma-separated, empty = all',
-    filter_exclude_desc: 'Comma-separated; wins over the list above',
+    filter_exclude_desc: 'Comma-separated; wins over the field above',
     hide_when_empty: 'Hide card when empty',
-    default_icon: 'Default icon',
-    default_icon_desc: "Used when a notification doesn't have its own icon",
-    default_icon_color: 'Default color',
-    default_icon_color_desc: 'CSS color or var(--token)',
     confirm_dismiss: 'Confirm before dismissing',
     show_open_action: 'Show Open button',
-    show_open_action_desc:
-      'Shows an Open button on notifications that include a url; the button opens that url',
+    show_open_action_desc: 'Shown for any item with a url; opens it.',
   },
 };
 
@@ -412,6 +408,30 @@ function splitCsv(value) {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+function deepEqual(a, b) {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => deepEqual(v, b[i]));
+  }
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+    return [...keys].every((k) => deepEqual(a[k], b[k]));
+  }
+  return a === b;
+}
+
+// Only keep keys that differ from CARD_DEFAULTS (or have no default at all,
+// e.g. `type`/`entity`) — _normalize merges every default into `_config` for
+// internal rendering, but firing that whole merged object back would
+// persist every untouched default into the saved YAML.
+function stripDefaults(config) {
+  const out = {};
+  for (const [key, value] of Object.entries(config)) {
+    if (key in CARD_DEFAULTS && deepEqual(value, CARD_DEFAULTS[key])) continue;
+    out[key] = value;
+  }
+  return out;
 }
 
 class NotifyDashboardCard extends HTMLElement {
@@ -540,10 +560,9 @@ class NotifyDashboardCard extends HTMLElement {
     const actions = Array.isArray(data.actions) ? data.actions : [];
 
     const row = mk('div', 'row');
-    // Accent stripe, not text/background — see the .row CSS comment on why
-    // an arbitrary user-supplied color stays off of text/large surfaces,
-    // and why this is a box-shadow rather than a real border-left.
-    if (data.color) row.style.boxShadow = `inset 4px 0 0 0 ${data.color}`;
+    // Low-opacity wash, not a solid fill — see the .row CSS comment on why
+    // an arbitrary user-supplied color stays off of text/large surfaces.
+    if (data.color) row.style.background = `color-mix(in srgb, ${data.color} 12%, transparent)`;
     const main = mk('div', 'row-main');
 
     const iconWrap = mk('div', 'icon-wrap' + (url ? ' clickable' : ''));
@@ -614,6 +633,34 @@ class NotifyDashboardCard extends HTMLElement {
       update();
       intervalIds.push(setInterval(update, 60000));
       content.appendChild(ts);
+    }
+
+    // YAML-only debugging aid (see CARD_DEFAULTS) — raw tag/group/timeout
+    // metadata as a plain inline row of icon+text pairs joined by "·", same
+    // shape as package-tracker-card's .carrier row (confirmed directly
+    // against its actual source — not a pill/chip, no background at all).
+    // Static, not live-ticking: it's showing the configured values as sent,
+    // not a countdown.
+    const debugCfg = this._config.debug;
+    if (debugCfg && (debugCfg.tag || debugCfg.group || debugCfg.timeout)) {
+      const tag = item.tag ?? data.tag;
+      const group = item.group ?? data.group;
+      const timeout = item.timeout ?? data.timeout;
+      const parts = [];
+      if (debugCfg.tag && tag) parts.push({ icon: 'mdi:tag-outline', text: tag });
+      if (debugCfg.group && group) parts.push({ icon: 'mdi:folder-multiple-outline', text: group });
+      if (debugCfg.timeout && Number.isFinite(timeout)) {
+        parts.push({ icon: 'mdi:timer-outline', text: this._formatChrono(timeout) });
+      }
+      if (parts.length) {
+        const debugRow = mk('div', 'debug-row');
+        parts.forEach((p, i) => {
+          if (i > 0) debugRow.appendChild(mk('span', 'debug-sep', '·'));
+          debugRow.appendChild(mkIcon(p.icon, 'var(--secondary-text-color)'));
+          debugRow.appendChild(document.createTextNode(p.text));
+        });
+        content.appendChild(debugRow);
+      }
     }
 
     if (url) {
@@ -880,10 +927,11 @@ class NotifyDashboardCard extends HTMLElement {
   }
 
   getGridOptions() {
-    // Notification/activity lists vary a lot in height. Per HA's own docs,
-    // rows must be *omitted* (not set to a string like "auto") for a card
-    // to ignore the grid's row sizing and size to its actual content.
-    return { columns: 12 };
+    // Notification/activity lists vary a lot in height, so rows is 'auto'
+    // (grow to fit content) rather than a fixed row count; full-width by
+    // default since a notification list cramped into a narrow column reads
+    // poorly.
+    return { columns: 'full', rows: 'auto' };
   }
 
   static getStubConfig(hass) {
@@ -903,6 +951,10 @@ class NotifyDashboardCard extends HTMLElement {
 
 // Visual editor — tab skeleton (tab bar, _fire/_ownFire echo protection,
 // ha-switch/ha-form rows) taken 1-to-1 from package-tracker-card.
+// debug (tag/group/timeout metadata, see CARD_DEFAULTS) is deliberately not
+// included here either — it's a YAML-only debugging aid, not a real
+// feature, so an editor field for it would invite permanently-on debug
+// metadata nobody meant to keep around.
 class NotifyDashboardCardEditor extends HTMLElement {
   constructor() {
     super();
@@ -956,7 +1008,9 @@ class NotifyDashboardCardEditor extends HTMLElement {
     // after every character.
     this._config = config;
     this._ownFire = true;
-    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config }, bubbles: true, composed: true }));
+    this.dispatchEvent(
+      new CustomEvent('config-changed', { detail: { config: stripDefaults(config) }, bubbles: true, composed: true })
+    );
   }
 
   _init() {
@@ -990,6 +1044,13 @@ class NotifyDashboardCardEditor extends HTMLElement {
 
     this._content = mk('div', 'tab-content');
     card.appendChild(this._content);
+    card.appendChild(Object.assign(document.createElement('a'), {
+      href: 'https://github.com/klaptafel/ha-notify-dashboard',
+      target: '_blank',
+      rel: 'noopener noreferrer',
+      className: 'version-link',
+      textContent: 'Notify Dashboard Card v' + CARD_VERSION,
+    }));
     root.appendChild(card);
     this._renderTab();
   }
@@ -1011,7 +1072,6 @@ class NotifyDashboardCardEditor extends HTMLElement {
   _renderContent() {
     const root = this._content;
     const c = this._config;
-    const content = c.content || [];
     const uiTr = this._uiTr();
 
     root.appendChild(mk('div', 'section-label', uiTr.source_section));
@@ -1022,6 +1082,15 @@ class NotifyDashboardCardEditor extends HTMLElement {
       )
     );
     root.appendChild(sourceGroup);
+  }
+
+  // ── Filter ────────────────────────────────────────────────────────────────
+
+  _renderFilter() {
+    const root = this._content;
+    const c = this._config;
+    const content = c.content || [];
+    const uiTr = this._uiTr();
 
     root.appendChild(mk('div', 'section-label', uiTr.content_section));
     const contentGroup = mk('div', 'settings-group');
@@ -1035,82 +1104,43 @@ class NotifyDashboardCardEditor extends HTMLElement {
         this._fire({ ...c, content: toggleInArray(content, 'notifications', val) })
       )
     );
-    contentGroup.appendChild(
-      this._mkFormRow(
-        uiTr.layout,
-        uiTr.layout_desc,
-        { select: { options: [{ value: 'single', label: uiTr.layout_single }, { value: 'split', label: uiTr.layout_split }] } },
-        c.layout || 'single',
-        (val) => this._fire({ ...c, layout: val })
-      )
-    );
-    contentGroup.appendChild(
-      this._mkFormRow(
-        uiTr.group_order,
-        null,
-        {
-          select: {
-            options: [
-              { value: 'live_first', label: uiTr.group_order_live_first },
-              { value: 'notifications_first', label: uiTr.group_order_notifications_first },
-              { value: 'chronological', label: uiTr.group_order_chronological },
-            ],
-          },
-        },
-        c.group_order || 'live_first',
-        (val) => this._fire({ ...c, group_order: val })
-      )
-    );
-    contentGroup.appendChild(
-      this._mkFormRow(
-        uiTr.max_items,
-        uiTr.max_items_desc,
-        { number: { min: 0, max: 100, step: 1, mode: 'box' } },
-        c.max_items ?? 0,
-        (val) => this._fire({ ...c, max_items: Number(val) || 0 })
-      )
-    );
     root.appendChild(contentGroup);
-  }
 
-  // ── Filter ────────────────────────────────────────────────────────────────
-
-  _renderFilter() {
-    const root = this._content;
-    const c = this._config;
-    const uiTr = this._uiTr();
-
-    root.appendChild(mk('div', 'section-label', uiTr.filter_section));
-    const group = mk('div', 'settings-group');
-    group.appendChild(
-      this._mkFormRow(uiTr.filter_tags, uiTr.filter_desc, { text: {} }, (c.filter_tags || []).join(', '), (val) =>
+    root.appendChild(mk('div', 'section-label', uiTr.filter_tags_section));
+    const tagsGroup = mk('div', 'settings-group');
+    tagsGroup.appendChild(
+      this._mkFormRow(uiTr.filter_include, uiTr.filter_desc, { text: {} }, (c.filter_tags || []).join(', '), (val) =>
         this._fire({ ...c, filter_tags: splitCsv(val) })
       )
     );
-    group.appendChild(
+    tagsGroup.appendChild(
       this._mkFormRow(
-        uiTr.filter_tags_exclude,
+        uiTr.filter_exclude,
         uiTr.filter_exclude_desc,
         { text: {} },
         (c.filter_tags_exclude || []).join(', '),
         (val) => this._fire({ ...c, filter_tags_exclude: splitCsv(val) })
       )
     );
-    group.appendChild(
-      this._mkFormRow(uiTr.filter_groups, uiTr.filter_desc, { text: {} }, (c.filter_groups || []).join(', '), (val) =>
+    root.appendChild(tagsGroup);
+
+    root.appendChild(mk('div', 'section-label', uiTr.filter_groups_section));
+    const groupsGroup = mk('div', 'settings-group');
+    groupsGroup.appendChild(
+      this._mkFormRow(uiTr.filter_include, uiTr.filter_desc, { text: {} }, (c.filter_groups || []).join(', '), (val) =>
         this._fire({ ...c, filter_groups: splitCsv(val) })
       )
     );
-    group.appendChild(
+    groupsGroup.appendChild(
       this._mkFormRow(
-        uiTr.filter_groups_exclude,
+        uiTr.filter_exclude,
         uiTr.filter_exclude_desc,
         { text: {} },
         (c.filter_groups_exclude || []).join(', '),
         (val) => this._fire({ ...c, filter_groups_exclude: splitCsv(val) })
       )
     );
-    root.appendChild(group);
+    root.appendChild(groupsGroup);
   }
 
   // ── Appearance ────────────────────────────────────────────────────────────
@@ -1124,20 +1154,20 @@ class NotifyDashboardCardEditor extends HTMLElement {
     const group = mk('div', 'settings-group');
     group.appendChild(
       this._mkFormRow(
-        uiTr.default_icon,
-        uiTr.default_icon_desc,
-        { icon: {} },
-        c.default_icon || 'mdi:bell-outline',
-        (val) => this._fire({ ...c, default_icon: val })
+        uiTr.layout,
+        null,
+        { select: { options: [{ value: 'single', label: uiTr.layout_single }, { value: 'split', label: uiTr.layout_split }] } },
+        c.layout || 'single',
+        (val) => this._fire({ ...c, layout: val })
       )
     );
     group.appendChild(
       this._mkFormRow(
-        uiTr.default_icon_color,
-        uiTr.default_icon_color_desc,
-        { text: {} },
-        c.default_icon_color || 'var(--primary-color)',
-        (val) => this._fire({ ...c, default_icon_color: val })
+        uiTr.max_items,
+        uiTr.max_items_desc,
+        { number: { min: 0, max: 100, step: 1, mode: 'box' } },
+        c.max_items ?? 0,
+        (val) => this._fire({ ...c, max_items: Number(val) || 0 })
       )
     );
     root.appendChild(group);

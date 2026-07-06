@@ -38,10 +38,10 @@
   },
   "exceptions": {
     "notification_not_found": {
-      "message": "No notification found with id '{item_id}'."
+      "message": "No notification found with id {item_id}."
     },
     "notification_not_dismissable": {
-      "message": "'{item_id}' can't be dismissed — this notification is persistent."
+      "message": "{item_id} can't be dismissed — this notification is persistent."
     }
   },
   "issues": {
