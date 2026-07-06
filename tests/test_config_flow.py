@@ -11,14 +11,15 @@ flows actually do, so bypassing it is a faithful, narrower unit test.
 """
 from __future__ import annotations
 
-import pytest
-import voluptuous as vol
+import voluptuous_serialize
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import config_validation as cv
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_mock_service
 
 from custom_components.notify_dashboard.config_flow import (
     NotifyDashboardConfigFlow,
     NotifyDashboardOptionsFlow,
+    _invalid_mirror_targets,
     _mirror_dismiss_options,
     _mirror_dismiss_schema,
 )
@@ -64,10 +65,14 @@ def test_mirror_dismiss_options_excludes_send_message(hass):
     assert "send_message" not in values
 
 
-# --- _mirror_dismiss_schema: the selector's custom_value lets a user type
-# anything, so _validate_mirror_target must still run on the result — same
-# rules as the YAML path (CONFIG_SCHEMA in __init__.py), confirmed
-# empirically to NOT be enforced by the selector itself. ---
+# --- _mirror_dismiss_schema: deliberately just the raw selector, no
+# vol.All(..., [validate_mirror_target]) wrapping — that shape used to
+# validate fine on submit but broke voluptuous_serialize.convert() (used to
+# send the form to the frontend on every render), producing a real 500 the
+# moment anyone opened the config or options flow. validate_mirror_target
+# now runs by hand via _invalid_mirror_targets in the step methods instead —
+# see test_mirror_dismiss_schema_is_serializable below for the regression
+# test that would have caught the original bug. ---
 
 
 def test_mirror_dismiss_schema_accepts_entity_and_raw_service(hass):
@@ -81,10 +86,21 @@ def test_mirror_dismiss_schema_accepts_entity_and_raw_service(hass):
     ]
 
 
-def test_mirror_dismiss_schema_rejects_invalid_custom_value(hass):
+def test_mirror_dismiss_schema_is_serializable(hass):
+    """Regression test: HA calls voluptuous_serialize.convert() on the
+    schema every time a flow step is rendered (not just on submit) — a
+    schema that only validates correctly but can't be serialized still
+    breaks the flow with a 500 before a user ever sees the form."""
     schema = _mirror_dismiss_schema(hass, [])
-    with pytest.raises(vol.Invalid):
-        schema({CONF_MIRROR_DISMISS_TO: ["sensor.wrong_domain"]})
+    voluptuous_serialize.convert(schema, custom_serializer=cv.custom_serializer)
+
+
+def test_invalid_mirror_targets_accepts_entity_and_raw_service():
+    assert _invalid_mirror_targets(["notify.mobile_app_pixel", "family_notifications"]) is False
+
+
+def test_invalid_mirror_targets_rejects_wrong_domain():
+    assert _invalid_mirror_targets(["sensor.wrong_domain"]) is True
 
 
 async def test_user_flow_shows_form(hass):
@@ -101,6 +117,20 @@ async def test_user_flow_creates_entry(hass):
     assert result["title"] == "Notify Dashboard"
     assert result["data"] == {}
     assert result["options"] == {CONF_MIRROR_DISMISS_TO: ["notify.mobile_app"]}
+
+
+async def test_user_flow_reshows_form_with_error_on_invalid_target(hass):
+    flow = _make_config_flow(hass)
+    result = await flow.async_step_user({CONF_MIRROR_DISMISS_TO: ["sensor.wrong_domain"]})
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "user"
+    assert result["errors"] == {"base": "invalid_mirror_target"}
+
+    # The invalid value is preserved so the user doesn't have to retype it.
+    schema_defaults = {
+        key.schema: key.default() for key in result["data_schema"].schema if hasattr(key, "default")
+    }
+    assert schema_defaults[CONF_MIRROR_DISMISS_TO] == ["sensor.wrong_domain"]
 
 
 async def test_user_flow_aborts_if_already_configured(hass):
@@ -139,3 +169,14 @@ async def test_options_flow_updates_entry(hass):
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == ""
     assert result["data"] == {CONF_MIRROR_DISMISS_TO: ["notify.mobile_app"]}
+
+
+async def test_options_flow_reshows_form_with_error_on_invalid_target(hass):
+    entry = MockConfigEntry(domain=DOMAIN, options={})
+    entry.add_to_hass(hass)
+
+    flow = _make_options_flow(hass, entry)
+    result = await flow.async_step_init({CONF_MIRROR_DISMISS_TO: ["sensor.wrong_domain"]})
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+    assert result["errors"] == {"base": "invalid_mirror_target"}

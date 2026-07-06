@@ -9,6 +9,9 @@
         },
         "data_description": {
           "mirror_dismiss_to": "Lists notify entities and legacy notify services/groups. Only works for Companion App (mobile_app) targets — other notify integrations don't understand this and would just show a literal text message instead."
+        },
+        "error": {
+          "invalid_mirror_target": "One of the entered targets isn't a valid notify entity or service name."
         }
       }
     },
@@ -32,6 +35,9 @@
         },
         "data_description": {
           "mirror_dismiss_to": "Lists notify entities and legacy notify services/groups. Only works for Companion App (mobile_app) targets — other notify integrations don't understand this and would just show a literal text message instead."
+        },
+        "error": {
+          "invalid_mirror_target": "One of the entered targets isn't a valid notify entity or service name."
         }
       }
     }

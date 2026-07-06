@@ -9,6 +9,9 @@
         },
         "data_description": {
           "mirror_dismiss_to": "Toont notify-entiteiten en legacy notify-services/groepen. Werkt alleen voor Companion App (mobile_app)-doelen — andere notify-integraties begrijpen dit niet en tonen dan een letterlijk tekstbericht."
+        },
+        "error": {
+          "invalid_mirror_target": "Een van de opgegeven doelen is geen geldige notify-entiteit of servicenaam."
         }
       }
     },
@@ -32,6 +35,9 @@
         },
         "data_description": {
           "mirror_dismiss_to": "Toont notify-entiteiten en legacy notify-services/groepen. Werkt alleen voor Companion App (mobile_app)-doelen — andere notify-integraties begrijpen dit niet en tonen dan een letterlijk tekstbericht."
+        },
+        "error": {
+          "invalid_mirror_target": "Een van de opgegeven doelen is geen geldige notify-entiteit of servicenaam."
         }
       }
     }

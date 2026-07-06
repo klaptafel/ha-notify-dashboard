@@ -53,31 +53,45 @@ def _mirror_dismiss_options(hass: HomeAssistant) -> list[dict[str, str]]:
 
 
 def _mirror_dismiss_schema(hass: HomeAssistant, default: list[str]) -> vol.Schema:
+    # Deliberately just the selector, no vol.All(..., [validate_mirror_target])
+    # wrapping — that shape validates fine on submit, but HA's
+    # voluptuous_serialize.convert() (used to send the form itself to the
+    # frontend on every render, not just on submit) has no case for a bare
+    # list-of-callables and raises "Unable to convert schema" for it,
+    # breaking the flow with a 500 before a user can even see the form.
+    # validate_mirror_target instead runs by hand in the step methods below.
     return vol.Schema(
         {
-            # custom_value lets a user type something not in the dropdown
-            # (e.g. a target that isn't set up yet) — but the selector
-            # itself validates nothing about *what* was typed, so
-            # validate_mirror_target still runs afterward on every entry,
-            # same as the YAML path in __init__.py's CONFIG_SCHEMA. Without
-            # this, the UI would silently accept a value YAML would reject
-            # outright (confirmed empirically: the select selector passes
-            # arbitrary strings through unchanged).
-            vol.Optional(CONF_MIRROR_DISMISS_TO, default=default): vol.All(
-                selector.selector(
-                    {
-                        "select": {
-                            "options": _mirror_dismiss_options(hass),
-                            "multiple": True,
-                            "custom_value": True,
-                            "mode": "dropdown",
-                        }
+            vol.Optional(CONF_MIRROR_DISMISS_TO, default=default): selector.selector(
+                {
+                    "select": {
+                        "options": _mirror_dismiss_options(hass),
+                        "multiple": True,
+                        "custom_value": True,
+                        "mode": "dropdown",
                     }
-                ),
-                [validate_mirror_target],
+                }
             )
         }
     )
+
+
+def _invalid_mirror_targets(values: list[str]) -> bool:
+    """True if any entry fails validate_mirror_target.
+
+    custom_value on the selector above lets a user type something not in
+    the dropdown (e.g. a target that isn't set up yet) — but the selector
+    itself validates nothing about *what* was typed, so this still needs to
+    run by hand on submit, same rules as the YAML path in __init__.py's
+    CONFIG_SCHEMA (confirmed empirically: the select selector passes
+    arbitrary strings through unchanged).
+    """
+    for value in values:
+        try:
+            validate_mirror_target(value)
+        except vol.Invalid:
+            return True
+    return False
 
 
 class NotifyDashboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -97,11 +111,16 @@ class NotifyDashboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
 
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(title="Notify Dashboard", data={}, options=user_input)
+            if _invalid_mirror_targets(user_input.get(CONF_MIRROR_DISMISS_TO, [])):
+                errors["base"] = "invalid_mirror_target"
+            else:
+                return self.async_create_entry(title="Notify Dashboard", data={}, options=user_input)
 
+        default = user_input.get(CONF_MIRROR_DISMISS_TO, []) if user_input else []
         return self.async_show_form(
-            step_id="user", data_schema=_mirror_dismiss_schema(self.hass, [])
+            step_id="user", data_schema=_mirror_dismiss_schema(self.hass, default), errors=errors
         )
 
 
@@ -117,10 +136,18 @@ class NotifyDashboardOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            if _invalid_mirror_targets(user_input.get(CONF_MIRROR_DISMISS_TO, [])):
+                errors["base"] = "invalid_mirror_target"
+            else:
+                return self.async_create_entry(title="", data=user_input)
 
-        current = self.config_entry.options.get(CONF_MIRROR_DISMISS_TO, [])
+        current = (
+            user_input.get(CONF_MIRROR_DISMISS_TO, [])
+            if user_input
+            else self.config_entry.options.get(CONF_MIRROR_DISMISS_TO, [])
+        )
         return self.async_show_form(
-            step_id="init", data_schema=_mirror_dismiss_schema(self.hass, current)
+            step_id="init", data_schema=_mirror_dismiss_schema(self.hass, current), errors=errors
         )
