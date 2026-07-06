@@ -5,10 +5,10 @@
         "title": "Notify Dashboard",
         "description": "Setting up notify.dashboard still requires a `notify:` YAML entry (see README) — this screen only configures the optional settings below.",
         "data": {
-          "mirror_dismiss_to": "Also forward clear_notification to"
+          "mirror_dismiss_to": "Also clear notifications on"
         },
         "data_description": {
-          "mirror_dismiss_to": "Only Companion App (mobile_app) notify entities understand this command and will actually clear the notification. Other notify integrations have no equivalent and will just show it as a literal text message — pick mobile_app targets here."
+          "mirror_dismiss_to": "Lists notify entities and legacy notify services/groups. Only works for Companion App (mobile_app) targets — other notify integrations don't understand this and would just show a literal text message instead."
         }
       }
     },
@@ -28,10 +28,10 @@
       "init": {
         "title": "Notify Dashboard settings",
         "data": {
-          "mirror_dismiss_to": "Also forward clear_notification to"
+          "mirror_dismiss_to": "Also clear notifications on"
         },
         "data_description": {
-          "mirror_dismiss_to": "Only Companion App (mobile_app) notify entities understand this command and will actually clear the notification. Other notify integrations have no equivalent and will just show it as a literal text message — pick mobile_app targets here."
+          "mirror_dismiss_to": "Lists notify entities and legacy notify services/groups. Only works for Companion App (mobile_app) targets — other notify integrations don't understand this and would just show a literal text message instead."
         }
       }
     }
@@ -47,7 +47,7 @@
   "issues": {
     "missing_mirror_target": {
       "title": "Mirror target no longer exists",
-      "description": "The configured 'Also forward clear_notification to' target `{entity_id}` doesn't exist anymore (it may have been renamed or removed). Notifications dismissed on this dashboard won't be cleared from that target until you update it under Settings > Devices & Services > Notify Dashboard > Configure."
+      "description": "The configured 'Also clear notifications on' target `{entity_id}` doesn't exist anymore (it may have been renamed or removed). Notifications dismissed on this dashboard won't be cleared from that target until you update it under Settings > Devices & Services > Notify Dashboard > Configure."
     }
   }
 }

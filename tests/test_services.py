@@ -7,10 +7,13 @@ service handler bodies defined inside _async_ensure_core.
 """
 from __future__ import annotations
 
+import time
+
 import pytest
+import voluptuous as vol
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import issue_registry as ir
-from pytest_homeassistant_custom_component.common import async_capture_events
+from pytest_homeassistant_custom_component.common import async_capture_events, async_mock_service
 
 from custom_components.notify_dashboard import async_setup
 from custom_components.notify_dashboard.const import (
@@ -204,6 +207,115 @@ async def test_dismiss_all_without_mirror_targets_does_not_call_notify(
     await hass.services.async_call(DOMAIN, SERVICE_DISMISS_ALL, {}, blocking=True)
     await hass.async_block_till_done()
     assert len(mock_notify_target) == 0
+
+
+# --- mirror_dismiss_to: raw legacy notify services (e.g. a YAML
+# `notify: - platform: group`), not just notify entities ---
+
+
+async def test_dismiss_forwards_to_raw_notify_service(hass, store):
+    group_calls = async_mock_service(hass, "notify", "family_notifications")
+    hass.data[DOMAIN]["mirror_dismiss_to"] = ["family_notifications"]
+    await store.async_add_notification("T", "M", {"tag": "t1"})
+    item_id = store.data["notifications"][0]["id"]
+
+    await hass.services.async_call(
+        DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    assert len(group_calls) == 1
+    assert group_calls[0].data["message"] == "clear_notification"
+    assert group_calls[0].data["data"]["tag"] == "t1"
+
+
+async def test_dismiss_raw_service_forward_failure_does_not_break_dismiss(hass, store):
+    # Registered (passes the has_service check, no repair issue) with a
+    # schema our clear_notification payload can't satisfy — schema
+    # validation raises synchronously as part of the call itself, even with
+    # blocking=False (unlike an exception raised from inside the handler,
+    # which runs as a background task and wouldn't be caught here at all).
+    # The best-effort forward must be swallowed regardless, without
+    # affecting the dismiss itself.
+    async def _flaky_handler(call):
+        pass
+
+    hass.services.async_register(
+        "notify",
+        "flaky_group",
+        _flaky_handler,
+        schema=vol.Schema({vol.Required("must_have_this"): str}),
+    )
+    hass.data[DOMAIN]["mirror_dismiss_to"] = ["flaky_group"]
+    await store.async_add_notification("T", "M", {"tag": "t1"})
+    item_id = store.data["notifications"][0]["id"]
+
+    await hass.services.async_call(
+        DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    assert store.data["notifications"] == []
+    assert ir.async_get(hass).async_get_issue(DOMAIN, "missing_mirror_target_flaky_group") is None
+
+
+async def test_dismiss_missing_raw_service_creates_repair_issue(hass, store):
+    hass.data[DOMAIN]["mirror_dismiss_to"] = ["nonexistent_group"]
+    await store.async_add_notification("T", "M", {"tag": "t1"})
+    item_id = store.data["notifications"][0]["id"]
+
+    await hass.services.async_call(
+        DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, "missing_mirror_target_nonexistent_group")
+    assert issue is not None
+    assert issue.translation_placeholders == {"entity_id": "nonexistent_group"}
+
+
+async def test_dismiss_raw_service_reappearing_clears_repair_issue(hass, store):
+    hass.data[DOMAIN]["mirror_dismiss_to"] = ["family_notifications"]
+
+    await store.async_add_notification("T", "M", {"tag": "t1"})
+    item_id = store.data["notifications"][0]["id"]
+    await hass.services.async_call(
+        DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert (
+        ir.async_get(hass).async_get_issue(DOMAIN, "missing_mirror_target_family_notifications")
+        is not None
+    )
+
+    async_mock_service(hass, "notify", "family_notifications")
+    await store.async_add_notification("T2", "M2", {"tag": "t2"})
+    item_id = store.data["notifications"][0]["id"]
+    await hass.services.async_call(
+        DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert (
+        ir.async_get(hass).async_get_issue(DOMAIN, "missing_mirror_target_family_notifications")
+        is None
+    )
+
+
+# --- automatic expiry (timeout/capacity) also forwards mirror_dismiss_to ---
+
+
+async def test_expired_notification_forwards_mirror_dismiss(hass, store, mock_notify_target):
+    hass.data[DOMAIN]["mirror_dismiss_to"] = ["notify.mobile_app"]
+    await store.async_add_notification("T", "M", {"tag": "expiring", "timeout": 1})
+    store.data["notifications"][0]["created_at"] = time.time() - 100
+
+    # Any subsequent store write runs cleanup first, discovering the
+    # now-expired entry above — same as an explicit dismiss would.
+    await store.async_add_notification("T2", "M2", {})
+    await hass.async_block_till_done()
+
+    assert len(mock_notify_target) == 1
+    assert mock_notify_target[0].data["data"]["tag"] == "expiring"
 
 
 # --- fire_action ---

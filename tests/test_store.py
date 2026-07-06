@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 from datetime import timedelta
+from unittest.mock import AsyncMock
 
 from freezegun import freeze_time
 from homeassistant.util import dt as dt_util
@@ -126,18 +127,21 @@ async def test_upsert_live_activity_requires_tag(loaded_store):
     assert loaded_store.data["live_activities"] == {}
 
 
-async def test_upsert_live_activity_progress_minus_one_removes(loaded_store):
-    await loaded_store.async_upsert_live_activity("T", "M", {"tag": "job1"})
-    assert "job1" in loaded_store.data["live_activities"]
-    await loaded_store.async_upsert_live_activity("T", "M", {"tag": "job1", "progress": -1})
-    assert "job1" not in loaded_store.data["live_activities"]
-
-
 async def test_upsert_live_activity_replaces_in_place(loaded_store):
     await loaded_store.async_upsert_live_activity("T", "10%", {"tag": "job1", "progress": 10})
     await loaded_store.async_upsert_live_activity("T", "90%", {"tag": "job1", "progress": 90})
     assert len(loaded_store.data["live_activities"]) == 1
     assert loaded_store.data["live_activities"]["job1"]["message"] == "90%"
+
+
+async def test_upsert_live_activity_progress_minus_one_is_not_special(loaded_store):
+    """progress: -1 isn't a documented companion-app sentinel (confirmed
+    against the actual docs — the real way to end a live activity is
+    clear_notification + tag, see async_clear_by_tag) — it's stored as
+    ordinary data like any other progress value, not treated as "done"."""
+    await loaded_store.async_upsert_live_activity("T", "M", {"tag": "job1", "progress": -1})
+    assert "job1" in loaded_store.data["live_activities"]
+    assert loaded_store.data["live_activities"]["job1"]["data"]["progress"] == -1
 
 
 # --- async_clear_by_tag ---
@@ -149,6 +153,43 @@ async def test_clear_by_tag_removes_both_kinds(loaded_store):
     await loaded_store.async_clear_by_tag("shared")
     assert loaded_store.data["notifications"] == []
     assert loaded_store.data["live_activities"] == {}
+
+
+async def test_clear_by_tag_forwards_removed_notification(hass):
+    on_removed = AsyncMock()
+    store = NotifyDashboardStore(hass, on_removed=on_removed)
+    await store.async_load()
+    try:
+        await store.async_add_notification("T", "M", {"tag": "t1"})
+        on_removed.reset_mock()  # the add itself never removes anything
+        await store.async_clear_by_tag("t1")
+        on_removed.assert_awaited_once_with(["t1"])
+    finally:
+        store._unsub_periodic_cleanup()
+
+
+async def test_clear_by_tag_forwards_removed_live_activity(hass):
+    on_removed = AsyncMock()
+    store = NotifyDashboardStore(hass, on_removed=on_removed)
+    await store.async_load()
+    try:
+        await store.async_upsert_live_activity("T", "M", {"tag": "job1"})
+        on_removed.reset_mock()
+        await store.async_clear_by_tag("job1")
+        on_removed.assert_awaited_once_with(["job1"])
+    finally:
+        store._unsub_periodic_cleanup()
+
+
+async def test_clear_by_tag_does_not_forward_when_nothing_matched(hass):
+    on_removed = AsyncMock()
+    store = NotifyDashboardStore(hass, on_removed=on_removed)
+    await store.async_load()
+    try:
+        await store.async_clear_by_tag("does-not-exist")
+        on_removed.assert_not_awaited()
+    finally:
+        store._unsub_periodic_cleanup()
 
 
 # --- async_dismiss ---
@@ -269,3 +310,127 @@ async def test_start_periodic_cleanup_is_idempotent(hass):
     store._start_periodic_cleanup()
     assert store._unsub_periodic_cleanup is first_unsub
     store._unsub_periodic_cleanup()
+
+
+# --- on_removed — mirror_dismiss_to forwarding for automatic expiry ---
+# (a notification that times out disappears from the dashboard exactly
+# like an explicit dismiss does, so it should get the same treatment)
+
+
+async def test_on_expired_called_for_timeout_expiry(hass):
+    on_expired = AsyncMock()
+    store = NotifyDashboardStore(hass, on_removed=on_expired)
+    await store.async_load()
+    try:
+        await store.async_add_notification("T", "M", {"tag": "t1", "timeout": 100})
+        store.data["notifications"][0]["created_at"] = time.time() - 200
+        # Any subsequent write runs _cleanup() first, discovering the
+        # now-expired entry above.
+        await store.async_add_notification("T2", "M2", {})
+        on_expired.assert_awaited_once_with(["t1"])
+    finally:
+        store._unsub_periodic_cleanup()
+
+
+async def test_on_expired_called_for_hard_cap_trim(hass):
+    on_expired = AsyncMock()
+    store = NotifyDashboardStore(hass, on_removed=on_expired)
+    await store.async_load()
+    try:
+        await store.async_add_notification("T", "M", {"tag": "oldest"})
+        for i in range(MAX_NOTIFICATIONS):
+            await store.async_add_notification(f"T{i}", f"M{i}", {})
+        on_expired.assert_awaited_once_with(["oldest"])
+    finally:
+        store._unsub_periodic_cleanup()
+
+
+async def test_on_expired_called_for_live_activity_staleness(hass):
+    on_expired = AsyncMock()
+    store = NotifyDashboardStore(hass, on_removed=on_expired)
+    await store.async_load()
+    try:
+        await store.async_upsert_live_activity("T", "M", {"tag": "job1"})
+        store.data["live_activities"]["job1"]["updated_at"] = time.time() - (
+            LIVE_ACTIVITY_STALE_HOURS * 3600 + 10
+        )
+        await store.async_add_notification("T2", "M2", {})
+        on_expired.assert_awaited_once_with(["job1"])
+    finally:
+        store._unsub_periodic_cleanup()
+
+
+async def test_on_expired_not_called_when_nothing_expired(hass):
+    on_expired = AsyncMock()
+    store = NotifyDashboardStore(hass, on_removed=on_expired)
+    await store.async_load()
+    try:
+        await store.async_add_notification("T", "M", {"tag": "t1"})
+        on_expired.assert_not_awaited()
+    finally:
+        store._unsub_periodic_cleanup()
+
+
+async def test_on_expired_not_called_for_untagged_expiry(hass):
+    on_expired = AsyncMock()
+    store = NotifyDashboardStore(hass, on_removed=on_expired)
+    await store.async_load()
+    try:
+        await store.async_add_notification("T", "M", {"timeout": 100})
+        store.data["notifications"][0]["created_at"] = time.time() - 200
+        await store.async_add_notification("T2", "M2", {})
+        on_expired.assert_not_awaited()
+    finally:
+        store._unsub_periodic_cleanup()
+
+
+async def test_on_expired_not_called_during_async_load_startup_cleanup(hass, hass_storage):
+    """The callback's caller (hass.data[DOMAIN]) isn't populated yet at
+    this point in real setup, so async_load's own cleanup pass must not
+    invoke it — only later writes/the periodic timer should."""
+    expired_at = time.time() - (MAX_AGE_DAYS * 86400 + 10)
+    hass_storage[STORAGE_KEY] = {
+        "version": 1,
+        "minor_version": 1,
+        "key": STORAGE_KEY,
+        "data": {
+            "notifications": [
+                {
+                    "id": "old",
+                    "tag": "t1",
+                    "group": None,
+                    "title": "T",
+                    "message": "M",
+                    "data": {},
+                    "created_at": expired_at,
+                    "updated_at": expired_at,
+                    "timeout": None,
+                }
+            ],
+            "live_activities": {},
+        },
+    }
+    on_expired = AsyncMock()
+    store = NotifyDashboardStore(hass, on_removed=on_expired)
+    await store.async_load()
+    try:
+        assert store.data["notifications"] == []
+        on_expired.assert_not_awaited()
+    finally:
+        store._unsub_periodic_cleanup()
+
+
+async def test_on_expired_called_from_periodic_timer(hass):
+    on_expired = AsyncMock()
+    with freeze_time(dt_util.utcnow()) as freezer:
+        store = NotifyDashboardStore(hass, on_removed=on_expired)
+        await store.async_load()
+        try:
+            await store.async_add_notification("T", "M", {"tag": "t1", "timeout": 5})
+            freezer.tick(timedelta(seconds=10))
+            freezer.tick(CLEANUP_INTERVAL)
+            async_fire_time_changed(hass, dt_util.utcnow())
+            await hass.async_block_till_done()
+            on_expired.assert_awaited_once_with(["t1"])
+        finally:
+            store._unsub_periodic_cleanup()

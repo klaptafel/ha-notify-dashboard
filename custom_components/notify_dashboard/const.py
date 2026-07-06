@@ -7,6 +7,13 @@ CONF_MIRROR_DISMISS_TO = "mirror_dismiss_to"
 # Only entity domain allowed for mirror_dismiss_to — shared between the
 # YAML validation (__init__.py) and the UI selector (config_flow.py).
 NOTIFY_ENTITY_DOMAIN = "notify"
+# mirror_dismiss_to targets can be a notify *entity* (dispatched via the
+# generic notify.send_message action) or a legacy notify *service* — e.g. a
+# YAML `notify: - platform: group`, which registers a raw service with no
+# entity at all. send_message itself is the generic dispatch mechanism, not
+# a real target — it always needs its own target selector, so it's excluded
+# from the raw-service picker in config_flow.py.
+RESERVED_NOTIFY_SERVICES = {"send_message"}
 
 # Storage
 STORAGE_VERSION = 1

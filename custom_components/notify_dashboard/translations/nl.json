@@ -5,10 +5,10 @@
         "title": "Notify Dashboard",
         "description": "Instellen van notify.dashboard vereist nog steeds een `notify:` YAML-regel (zie README) — dit scherm regelt alleen de optionele instellingen hieronder.",
         "data": {
-          "mirror_dismiss_to": "Ook clear_notification doorsturen naar"
+          "mirror_dismiss_to": "Meldingen ook wissen op"
         },
         "data_description": {
-          "mirror_dismiss_to": "Alleen Companion App (mobile_app) notify-entiteiten begrijpen dit commando en verwijderen de melding daadwerkelijk. Andere notify-integraties hebben hier geen equivalent voor en tonen dit als een letterlijk tekstbericht — kies hier mobile_app-doelen."
+          "mirror_dismiss_to": "Toont notify-entiteiten en legacy notify-services/groepen. Werkt alleen voor Companion App (mobile_app)-doelen — andere notify-integraties begrijpen dit niet en tonen dan een letterlijk tekstbericht."
         }
       }
     },
@@ -28,10 +28,10 @@
       "init": {
         "title": "Notify Dashboard instellingen",
         "data": {
-          "mirror_dismiss_to": "Ook clear_notification doorsturen naar"
+          "mirror_dismiss_to": "Meldingen ook wissen op"
         },
         "data_description": {
-          "mirror_dismiss_to": "Alleen Companion App (mobile_app) notify-entiteiten begrijpen dit commando en verwijderen de melding daadwerkelijk. Andere notify-integraties hebben hier geen equivalent voor en tonen dit als een letterlijk tekstbericht — kies hier mobile_app-doelen."
+          "mirror_dismiss_to": "Toont notify-entiteiten en legacy notify-services/groepen. Werkt alleen voor Companion App (mobile_app)-doelen — andere notify-integraties begrijpen dit niet en tonen dan een letterlijk tekstbericht."
         }
       }
     }
@@ -47,7 +47,7 @@
   "issues": {
     "missing_mirror_target": {
       "title": "Doorstuurdoel bestaat niet meer",
-      "description": "Het geconfigureerde 'Ook clear_notification doorsturen naar'-doel `{entity_id}` bestaat niet meer (mogelijk hernoemd of verwijderd). Meldingen die je op dit dashboard sluit, worden niet meer op dat doel gewist totdat je dit bijwerkt via Instellingen > Apparaten & diensten > Notify Dashboard > Configureren."
+      "description": "Het geconfigureerde 'Meldingen ook wissen op'-doel `{entity_id}` bestaat niet meer (mogelijk hernoemd of verwijderd). Meldingen die je op dit dashboard sluit, worden niet meer op dat doel gewist totdat je dit bijwerkt via Instellingen > Apparaten & diensten > Notify Dashboard > Configureren."
     }
   }
 }

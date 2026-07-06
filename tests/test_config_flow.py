@@ -11,12 +11,16 @@ flows actually do, so bypassing it is a faithful, narrower unit test.
 """
 from __future__ import annotations
 
+import pytest
+import voluptuous as vol
 from homeassistant.data_entry_flow import FlowResultType
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import MockConfigEntry, async_mock_service
 
 from custom_components.notify_dashboard.config_flow import (
     NotifyDashboardConfigFlow,
     NotifyDashboardOptionsFlow,
+    _mirror_dismiss_options,
+    _mirror_dismiss_schema,
 )
 from custom_components.notify_dashboard.const import CONF_MIRROR_DISMISS_TO, DOMAIN
 
@@ -38,6 +42,49 @@ def test_async_get_options_flow_returns_options_flow():
     entry = MockConfigEntry(domain=DOMAIN, options={})
     result = NotifyDashboardConfigFlow.async_get_options_flow(entry)
     assert isinstance(result, NotifyDashboardOptionsFlow)
+
+
+# --- _mirror_dismiss_options: both notify entities and legacy notify
+# services/groups should be selectable (see the const.py comment on
+# RESERVED_NOTIFY_SERVICES for why send_message itself is excluded) ---
+
+
+def test_mirror_dismiss_options_includes_entities_and_raw_services(hass):
+    hass.states.async_set("notify.mobile_app_pixel", "unknown")
+    async_mock_service(hass, "notify", "family_notifications")
+
+    values = {opt["value"] for opt in _mirror_dismiss_options(hass)}
+    assert "notify.mobile_app_pixel" in values
+    assert "family_notifications" in values
+
+
+def test_mirror_dismiss_options_excludes_send_message(hass):
+    async_mock_service(hass, "notify", "send_message")
+    values = {opt["value"] for opt in _mirror_dismiss_options(hass)}
+    assert "send_message" not in values
+
+
+# --- _mirror_dismiss_schema: the selector's custom_value lets a user type
+# anything, so _validate_mirror_target must still run on the result — same
+# rules as the YAML path (CONFIG_SCHEMA in __init__.py), confirmed
+# empirically to NOT be enforced by the selector itself. ---
+
+
+def test_mirror_dismiss_schema_accepts_entity_and_raw_service(hass):
+    schema = _mirror_dismiss_schema(hass, [])
+    result = schema(
+        {CONF_MIRROR_DISMISS_TO: ["notify.mobile_app_pixel", "family_notifications"]}
+    )
+    assert result[CONF_MIRROR_DISMISS_TO] == [
+        "notify.mobile_app_pixel",
+        "family_notifications",
+    ]
+
+
+def test_mirror_dismiss_schema_rejects_invalid_custom_value(hass):
+    schema = _mirror_dismiss_schema(hass, [])
+    with pytest.raises(vol.Invalid):
+        schema({CONF_MIRROR_DISMISS_TO: ["sensor.wrong_domain"]})
 
 
 async def test_user_flow_shows_form(hass):

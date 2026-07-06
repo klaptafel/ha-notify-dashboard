@@ -10,10 +10,10 @@
 // tag-replace = full replacement (so no client-side merge needed — the
 // backend already delivers complete entries).
 //
-// Fase 2, partially: progress bar (progress/progress_max, with percentage)
-// and chronometer/when for live activities. progress_indeterminate and
-// critical_text are deliberately not picked up yet (an unconfirmed field,
-// and a lock-screen concept that doesn't map 1-to-1 onto a dashboard card).
+// Fase 2, partially: progress bar (progress/progress_max, with percentage),
+// chronometer/when, and critical_text (live activities only — shares the
+// status bar chip slot with chronometer, which wins when both are set,
+// same as the companion app). progress_indeterminate is picked up too.
 
 const CARD_VERSION = '0.1.7';
 
@@ -43,14 +43,22 @@ const CARD_CSS = `
   }
   :host(.hidden) { display: none !important; margin: 0 !important; padding: 0 !important; min-height: 0 !important; }
 
-  /* border-left instead of a text/background color: color is user-supplied
-     and arbitrary, so using it for text or a large background wash risks
-     failing WCAG contrast against title/message. A thin accent stripe is
-     decorative, not a text/UI-boundary contrast requirement, so it stays
-     safe regardless of which color comes in — while still giving an
-     at-a-glance way to recognize a notification in a list. Transparent by
-     default so rows without a color line up identically to rows with one. */
-  .row { display: flex; flex-direction: column; padding: 12px 16px; gap: 14px; border-left: 4px solid transparent; }
+  /* An inset box-shadow instead of a real border-left/text/background
+     color: color is user-supplied and arbitrary, so using it for text or a
+     large background wash risks failing WCAG contrast against
+     title/message. A thin accent stripe is decorative, not a text/UI-
+     boundary contrast requirement, so it stays safe regardless of which
+     color comes in. box-shadow (unlike border) paints without taking up
+     any box-model space — a real border-left here would sit outside the
+     16px padding, insetting the icon by 4px more on the left (20px) than
+     content/dismiss get on the right (16px, no border-right there) — a
+     small but real left/right asymmetry a box-shadow avoids entirely.
+     Transparent by default so rows without a color still line up exactly
+     like rows with one. */
+  .row {
+    display: flex; flex-direction: column; padding: 12px 16px; gap: 14px;
+    box-shadow: inset 4px 0 0 0 transparent;
+  }
   .row + .row { border-top: 1px solid var(--divider-color, rgba(0,0,0,.06)); }
 
   /* flex-start (not center): icon/dismiss must stay pinned to the top and
@@ -80,18 +88,61 @@ const CARD_CSS = `
     font-size: var(--ha-font-size-m, 14px); font-weight: var(--ha-font-weight-medium, 500);
     color: var(--primary-text-color); line-height: var(--ha-line-height-condensed, 1.3);
   }
+  /* Holds title + critical-text together as one line — see .critical-text
+     below for why this has to be a single flex row instead of two
+     independently positioned boxes. align-items: flex-start (not center)
+     keeps critical-text pinned to title's *first* line if title wraps. */
+  .header-line { display: flex; align-items: flex-start; gap: 8px; }
+  .header-line > .title { flex: 1; min-width: 0; }
   .subtitle {
     font-size: var(--ha-font-size-s, 12px); font-weight: var(--ha-font-weight-medium, 500);
     color: var(--secondary-text-color); line-height: var(--ha-line-height-condensed, 1.3);
     margin-top: 2px;
   }
+  /* Whenever title/critical_text are both absent, subtitle becomes
+     .content's first child instead — it shouldn't carry the same top
+     margin then as when it's following a title line above it. */
+  .subtitle:first-child { margin-top: 0; }
   .message {
     font-size: var(--ha-font-size-s, 12px); color: var(--primary-text-color);
     line-height: var(--ha-line-height-condensed, 1.3); margin-top: 3px; white-space: pre-wrap;
   }
   .chronometer {
+    /* The live timer replaces the message line entirely (same as iOS) — it
+       needs to read as real content, not a small muted caption smaller
+       than title/message. Size/weight carry that emphasis, not color:
+       --primary-color is a theme accent with no contrast guarantee against
+       the card surface (same reason data.color stays a decorative stripe,
+       never text/background) — --primary-text-color is what HA themes
+       actually keep legible here. */
+    font-size: var(--ha-font-size-l, 20px); font-weight: var(--ha-font-weight-bold, 700);
+    color: var(--primary-text-color); line-height: var(--ha-line-height-condensed, 1.3);
+    margin-top: 4px; font-variant-numeric: tabular-nums;
+  }
+  .timestamp {
     font-size: var(--ha-font-size-xs, 11px); color: var(--secondary-text-color);
-    margin-top: 3px; font-variant-numeric: tabular-nums;
+    margin-top: 3px;
+  }
+  /* Lives *inside* .content's .header-line, next to title — not as a
+     separate box next to .content in row-main. .content vertically centers
+     short content against the 38px icon (min-height + justify-content:
+     center, see .content's own comment), so a box outside of it can never
+     reliably track where the first line actually ends up: with just one
+     short line, that line sits centered partway down a 38px box, not flush
+     at the top — a fixed "flush top" position elsewhere then drifts out of
+     sync with it, worse still whenever title happens to be missing and the
+     first line becomes something else entirely. Being on the same flex row
+     as title fixes that structurally: critical-text now moves exactly
+     wherever that line moves, whatever it is. margin-left: auto pushes it
+     to the end of the row on its own, whether or not a title sibling with
+     flex: 1 exists next to it. Capped width + wrapping (not truncation —
+     this project never truncates, see the file header) so a long
+     critical_text doesn't crowd out the title. */
+  .critical-text {
+    flex-shrink: 0; margin-left: auto; max-width: 96px; text-align: right;
+    font-size: var(--ha-font-size-m, 14px); font-weight: var(--ha-font-weight-medium, 500);
+    color: var(--primary-text-color); line-height: var(--ha-line-height-condensed, 1.3);
+    overflow-wrap: break-word;
   }
 
   /* Reuses .icon-wrap for the exact box (38x38, round) — ha-icon-button
@@ -155,11 +206,11 @@ const CARD_CSS = `
     font-variant-numeric: tabular-nums;
   }
 
-  /* Without this, a row's straight border-left (the color accent stripe)
-     overhangs past ha-card's own rounded corners — visible on the first/last
-     row in single layout, and on every row in split layout, since there
-     each row gets its own fully-rounded card. ha-card doesn't clip its own
-     children by default. */
+  /* Without this, a row's straight left edge (where the color accent
+     stripe paints) overhangs past ha-card's own rounded corners — visible
+     on the first/last row in single layout, and on every row in split
+     layout, since there each row gets its own fully-rounded card. ha-card
+     doesn't clip its own children by default. */
   ha-card { overflow: hidden; }
   .split-wrapper { display: flex; flex-direction: column; gap: 8px; }
   .split-wrapper ha-card .row { border-top: none; }
@@ -220,11 +271,13 @@ const EDITOR_TRANSLATIONS = {
     appearance_section: 'Weergave',
     behaviour_section: 'Gedrag',
     entity: 'Entiteit',
+    entity_desc: 'Moet de Notify Dashboard sensor zijn (meestal sensor.notify_dashboard)',
     live_activities: 'Live activities',
     notifications: 'Notifications',
     layout: 'Indeling',
     layout_single: 'Eén kaart',
     layout_split: 'Losse kaarten',
+    layout_desc: 'Eén kaart: live activities en notifications samen. Losse kaarten: allebei hun eigen kaart',
     group_order: 'Groepsvolgorde',
     group_order_live_first: 'Live activities eerst',
     group_order_notifications_first: 'Notifications eerst',
@@ -257,11 +310,13 @@ const EDITOR_TRANSLATIONS = {
     appearance_section: 'Appearance',
     behaviour_section: 'Behaviour',
     entity: 'Entity',
+    entity_desc: 'Must be the Notify Dashboard sensor (usually sensor.notify_dashboard)',
     live_activities: 'Live activities',
     notifications: 'Notifications',
     layout: 'Layout',
     layout_single: 'Single card',
     layout_split: 'Split cards',
+    layout_desc: 'Single card: live activities and notifications together. Split cards: each gets its own card',
     group_order: 'Group order',
     group_order_live_first: 'Live activities first',
     group_order_notifications_first: 'Notifications first',
@@ -293,13 +348,31 @@ const CARD_TRANSLATIONS = {
     dismiss: 'Sluiten',
     empty: 'Geen meldingen',
     confirm_dismiss: 'Melding verwijderen?',
+    just_now: 'Zojuist',
+    minutes_ago: (n) => `${n}m geleden`,
+    hours_ago: (n) => `${n}u geleden`,
+    days_ago: (n) => `${n}d geleden`,
   },
   en: {
     dismiss: 'Dismiss',
     empty: 'No notifications',
     confirm_dismiss: 'Remove this notification?',
+    just_now: 'Just now',
+    minutes_ago: (n) => `${n}m ago`,
+    hours_ago: (n) => `${n}h ago`,
+    days_ago: (n) => `${n}d ago`,
   },
 };
+
+function formatRelativeTime(unixSeconds, uiTr) {
+  const diff = Math.max(0, Date.now() / 1000 - unixSeconds);
+  const minutes = Math.floor(diff / 60);
+  if (minutes < 1) return uiTr.just_now;
+  if (minutes < 60) return uiTr.minutes_ago(minutes);
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return uiTr.hours_ago(hours);
+  return uiTr.days_ago(Math.floor(hours / 24));
+}
 
 function mk(tag, cls, text) {
   const el = document.createElement(tag);
@@ -365,6 +438,18 @@ class NotifyDashboardCard extends HTMLElement {
     // keep living forever after the card leaves the DOM, e.g. on a view
     // switch.
     this._teardownRows();
+  }
+
+  connectedCallback() {
+    // Lovelace detaches and reattaches a card's DOM node (without
+    // destroying the element) when entering/exiting dashboard edit mode —
+    // that fires disconnectedCallback above, which empties the row
+    // container. The entity's last_updated usually hasn't changed across
+    // that move, so set hass's guard below would otherwise never notice
+    // anything needs rebuilding, leaving the card an empty shell until a
+    // full page refresh recreates it. Force a fresh render on every
+    // (re)connect instead of relying on that guard alone.
+    if (this._hass && this._config) this._render();
   }
 
   _teardownRows() {
@@ -458,8 +543,9 @@ class NotifyDashboardCard extends HTMLElement {
 
     const row = mk('div', 'row');
     // Accent stripe, not text/background — see the .row CSS comment on why
-    // an arbitrary user-supplied color stays off of text/large surfaces.
-    if (data.color) row.style.borderLeftColor = data.color;
+    // an arbitrary user-supplied color stays off of text/large surfaces,
+    // and why this is a box-shadow rather than a real border-left.
+    if (data.color) row.style.boxShadow = `inset 4px 0 0 0 ${data.color}`;
     const main = mk('div', 'row-main');
 
     const iconWrap = mk('div', 'icon-wrap' + (url ? ' clickable' : ''));
@@ -470,22 +556,35 @@ class NotifyDashboardCard extends HTMLElement {
 
     const content = mk('div', 'content' + (url ? ' clickable' : ''));
     // Only render what's actually there — an empty div would otherwise push
-    // unwanted whitespace into the row. Cascading fallback so a missing
-    // field doesn't just leave a gap while there's still relevant content:
-    // - no title, but there is a message -> message gets the title styling.
-    // - no message (and title didn't already come from message) -> the
-    //   chronometer gets the message styling instead of its own smaller style.
+    // unwanted whitespace into the row.
     // Nothing is ever shown twice: once message has filled in the title,
     // that same text doesn't also appear as the message.
     const hasChronometer =
       item._kind === 'live_activities' && !!data.chronometer && Number.isFinite(data.when);
+    // critical_text is replaced by the timer once chronometer is set, same
+    // as the companion app's own status-bar-chip behavior — never both.
+    const hasCriticalText = item._kind === 'live_activities' && !hasChronometer && !!data.critical_text;
     const titleText = item.title || item.message || null;
-    const showMessage = !!item.title && !!item.message;
-    const chronoAsMessage = !item.message && hasChronometer;
+    // The chronometer takes the message's spot entirely (same as iOS) —
+    // if there's no separate message to replace (message already became
+    // titleText above), it just becomes the one supplementary line instead.
+    const showMessage = !!item.title && !!item.message && !hasChronometer;
 
-    if (titleText) content.appendChild(mk('div', 'title', titleText));
+    // critical-text rides along on the same line as title/title-fallback,
+    // *inside* .content, rather than as a separate box next to it — .content
+    // vertically centers short content against the 38px icon (see its CSS
+    // comment), so a box outside of it can never reliably track where that
+    // first line actually ends up. Nesting them in one flex row means
+    // critical-text moves exactly wherever that line moves, title or not.
+    if (hasCriticalText) {
+      const headerLine = mk('div', 'header-line');
+      if (titleText) headerLine.appendChild(mk('div', 'title', titleText));
+      headerLine.appendChild(mk('div', 'critical-text', data.critical_text));
+      content.appendChild(headerLine);
+    } else if (titleText) {
+      content.appendChild(mk('div', 'title', titleText));
+    }
     if (data.subtitle) content.appendChild(mk('div', 'subtitle', data.subtitle));
-    if (showMessage) content.appendChild(mk('div', 'message', item.message));
 
     // when_relative adds when to updated_at (the moment we received it)
     // instead of to the render time, so the target doesn't shift on every
@@ -493,13 +592,30 @@ class NotifyDashboardCard extends HTMLElement {
     // same as with the companion app.
     if (hasChronometer) {
       const target = data.when_relative ? (item.updated_at || 0) + data.when : data.when;
-      const chrono = mk('div', chronoAsMessage ? 'message' : 'chronometer');
+      const chrono = mk('div', 'chronometer');
       const update = () => {
         chrono.textContent = this._formatChrono(target - Date.now() / 1000);
       };
       update();
       intervalIds.push(setInterval(update, 1000));
       content.appendChild(chrono);
+    } else if (showMessage) {
+      content.appendChild(mk('div', 'message', item.message));
+    }
+
+    // Relative "sent X ago" for regular notifications — live activities
+    // have the chronometer/critical_text instead. Coarse (minute)
+    // granularity, so a minute-interval tick is enough — no need for
+    // chronometer's 1s.
+    if (item._kind === 'notifications' && Number.isFinite(item.created_at)) {
+      const uiTr = this._uiTr();
+      const ts = mk('div', 'timestamp');
+      const update = () => {
+        ts.textContent = formatRelativeTime(item.created_at, uiTr);
+      };
+      update();
+      intervalIds.push(setInterval(update, 60000));
+      content.appendChild(ts);
     }
 
     if (url) {
@@ -534,7 +650,6 @@ class NotifyDashboardCard extends HTMLElement {
     }
 
     row.appendChild(main);
-
     // The Open button is optional (show_open_action) — tapping the icon/
     // content already navigates anyway, this button is purely an explicit,
     // visible alternative for that.
@@ -903,7 +1018,7 @@ class NotifyDashboardCardEditor extends HTMLElement {
     root.appendChild(mk('div', 'section-label', uiTr.source_section));
     const sourceGroup = mk('div', 'settings-group');
     sourceGroup.appendChild(
-      this._mkFormRow(uiTr.entity, null, { entity: { domain: 'sensor' } }, c.entity || 'sensor.notify_dashboard', (val) =>
+      this._mkFormRow(uiTr.entity, uiTr.entity_desc, { entity: { domain: 'sensor' } }, c.entity || 'sensor.notify_dashboard', (val) =>
         this._fire({ ...c, entity: val })
       )
     );
@@ -924,7 +1039,7 @@ class NotifyDashboardCardEditor extends HTMLElement {
     contentGroup.appendChild(
       this._mkFormRow(
         uiTr.layout,
-        null,
+        uiTr.layout_desc,
         { select: { options: [{ value: 'single', label: uiTr.layout_single }, { value: 'split', label: uiTr.layout_split }] } },
         c.layout || 'single',
         (val) => this._fire({ ...c, layout: val })
@@ -1009,11 +1124,6 @@ class NotifyDashboardCardEditor extends HTMLElement {
     root.appendChild(mk('div', 'section-label', uiTr.appearance_section));
     const group = mk('div', 'settings-group');
     group.appendChild(
-      this._mkToggleRow(uiTr.hide_when_empty, !!c.hide_when_empty, null, (val) =>
-        this._fire({ ...c, hide_when_empty: val })
-      )
-    );
-    group.appendChild(
       this._mkFormRow(
         uiTr.default_icon,
         uiTr.default_icon_desc,
@@ -1035,6 +1145,11 @@ class NotifyDashboardCardEditor extends HTMLElement {
 
     root.appendChild(mk('div', 'section-label', uiTr.behaviour_section));
     const behavGroup = mk('div', 'settings-group');
+    behavGroup.appendChild(
+      this._mkToggleRow(uiTr.hide_when_empty, !!c.hide_when_empty, null, (val) =>
+        this._fire({ ...c, hide_when_empty: val })
+      )
+    );
     behavGroup.appendChild(
       this._mkToggleRow(uiTr.confirm_dismiss, !!c.confirm_dismiss, null, (val) =>
         this._fire({ ...c, confirm_dismiss: val })

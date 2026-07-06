@@ -36,7 +36,7 @@ Or manually: copy `custom_components/notify_dashboard` into your own `custom_com
 ## Configuration
 
 **1. Add the integration via Settings → Devices & Services → Add Integration → Notify Dashboard.**
-This sets up the store, services, and frontend, and lets you optionally pick which `notify.*` targets should also receive a `clear_notification` when you dismiss something on the dashboard (editable later via "Configure").
+This sets up the store, services, and frontend, and lets you optionally pick one or more `notify.*` targets that should also receive a `clear_notification` when a notification is dismissed on the dashboard — including automatically, when it times out or gets trimmed by the retention cap, not just an explicit dismiss (editable later via "Configure"). Both notify *entities* (e.g. `notify.mobile_app_pixel`) and legacy notify *services*/groups (e.g. a YAML `notify: - platform: group`, which has no entity at all) show up in the picker.
 
 **2. Add the notify platform in YAML — this step can't be done through the UI**, since legacy notify platforms don't support config entries:
 
@@ -121,6 +121,20 @@ data:
     when: 900              # 15 minutes
     when_relative: true     # when = seconds from now, not a Unix timestamp
 ```
+
+`critical_text` (live activities only) is short supplementary text shown below the title — it shares its slot with `chronometer`, which takes over that slot when both are set (same as the companion app):
+
+```yaml
+action: notify.dashboard
+data:
+  title: Front door
+  data:
+    tag: front_door
+    live_update: true
+    critical_text: Package waiting
+```
+
+Regular (non-live) notifications also show a relative "sent X ago" timestamp automatically — no config needed.
 
 `actions` render as pill buttons (`action`, `title`, optional `action_data`, optional `destructive` for red text). Tapping one fires `mobile_app_notification_action`, shows a small spinner, and dismisses the notification ~600ms later — the `url`-driven Open button is unaffected by this and never auto-dismisses.
 
@@ -230,5 +244,5 @@ The dashboard sensor (`sensor.notify_dashboard`) is push-based, not polled — i
 
 ## Roadmap
 
-- `image`, `icon_url`, `alert_once`, `critical_text`
+- `image`, `icon_url`, `alert_once`
 - `notify-dashboard-badge` for a count badge in a Sections dashboard header

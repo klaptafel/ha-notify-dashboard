@@ -6,11 +6,14 @@ test_services.py — this file is only about how everything gets wired up.
 """
 from __future__ import annotations
 
+import pytest
+import voluptuous as vol
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import CoreState
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.notify_dashboard import (
+    CONFIG_SCHEMA,
     async_setup,
     async_setup_entry,
     async_unload_entry,
@@ -209,3 +212,28 @@ async def test_lovelace_registration_waits_for_started_event_when_not_running(
     hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
     await hass.async_block_till_done()
     assert len(frontend_extra_js_urls) == 1
+
+
+# --- CONFIG_SCHEMA: mirror_dismiss_to accepts both notify entity ids and
+# bare legacy notify service names (e.g. a YAML `notify: - platform: group`,
+# which has no entity at all — see config_flow.py's _mirror_dismiss_options
+# for the full reasoning) ---
+
+
+def test_config_schema_accepts_entity_and_raw_service_mirror_targets():
+    result = CONFIG_SCHEMA(
+        {
+            DOMAIN: {
+                "mirror_dismiss_to": ["notify.mobile_app_pixel", "family_notifications"]
+            }
+        }
+    )
+    assert result[DOMAIN]["mirror_dismiss_to"] == [
+        "notify.mobile_app_pixel",
+        "family_notifications",
+    ]
+
+
+def test_config_schema_rejects_non_notify_entity_mirror_target():
+    with pytest.raises(vol.Invalid):
+        CONFIG_SCHEMA({DOMAIN: {"mirror_dismiss_to": ["sensor.not_a_notify_entity"]}})

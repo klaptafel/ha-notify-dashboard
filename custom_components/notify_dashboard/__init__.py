@@ -68,12 +68,25 @@ def get_domain_data(hass: HomeAssistant) -> NotifyDashboardData:
     return cast(NotifyDashboardData, hass.data[DOMAIN])
 
 
+def _validate_mirror_target(value: str) -> str:
+    """A mirror_dismiss_to entry is either a notify entity id (contains a
+    dot, e.g. "notify.mobile_app_pixel") or a bare legacy notify service
+    name (never a dot, e.g. "family_notifications" from a YAML `notify: -
+    platform: group` — that one has no entity at all). See
+    config_flow.py's _mirror_dismiss_options for the full reasoning, and
+    _async_mirror_clear below for how each is dispatched.
+    """
+    if "." in value:
+        return cv.entity_domain(NOTIFY_ENTITY_DOMAIN)(cv.entity_id(value))
+    return cv.slug(value)
+
+
 CONFIG_SCHEMA = vol.Schema(
     {
         DOMAIN: vol.Schema(
             {
                 vol.Optional(CONF_MIRROR_DISMISS_TO, default=[]): vol.All(
-                    cv.ensure_list, [vol.All(cv.entity_id, cv.entity_domain(NOTIFY_ENTITY_DOMAIN))]
+                    cv.ensure_list, [_validate_mirror_target]
                 ),
             }
         )
@@ -142,7 +155,20 @@ async def _async_ensure_core(hass: HomeAssistant, config: ConfigType) -> None:
     if DOMAIN in hass.data:
         return
 
-    store = NotifyDashboardStore(hass)
+    async def _on_removed(tags: list[str]) -> None:
+        # A notification that times out/gets capacity-trimmed, or that's
+        # cleared via a clear_notification command sent straight to
+        # notify.dashboard, disappears from the dashboard exactly like an
+        # explicit dismiss — it should clear the phone notification too,
+        # not leave it behind. Safe to reference get_domain_data(hass) here
+        # despite hass.data[DOMAIN] not existing yet at this exact point in
+        # _async_ensure_core: this callback only actually runs later (from
+        # the periodic cleanup timer or a subsequent store write), by which
+        # time setup has finished.
+        if get_domain_data(hass)["mirror_dismiss_to"]:
+            await asyncio.gather(*(_async_mirror_clear(hass, tag) for tag in tags))
+
+    store = NotifyDashboardStore(hass, on_removed=_on_removed)
     await store.async_load()
 
     data: NotifyDashboardData = {
@@ -263,27 +289,57 @@ async def _async_register_lovelace_resource(hass: HomeAssistant) -> None:
         await resources.async_update_item(existing["id"], {"res_type": "module", "url": url})
 
 
-def _mirror_target_issue_id(entity_id: str) -> str:
-    return f"missing_mirror_target_{entity_id}"
+def _mirror_target_issue_id(target: str) -> str:
+    return f"missing_mirror_target_{target}"
 
 
 async def _async_mirror_clear(hass: HomeAssistant, tag: str) -> None:
     """Send clear_notification to the mirror_dismiss_to targets.
 
-    Uses the generic `notify.send_message` action with the chosen entity as
-    the target, not a separate service per entity name — modern notify
-    entities (like the one the companion app uses these days) run through
-    that one shared endpoint, not through their own service per device.
+    Each target is either a notify *entity* (dispatched via the generic
+    notify.send_message action + target — modern notify integrations, like
+    the companion app these days, all run through that one shared endpoint
+    instead of a service per device) or a legacy notify *service* — a
+    service registered directly under the notify domain with no entity at
+    all, the only way to reach e.g. a YAML `notify: - platform: group` (or
+    any other BaseNotificationService-based integration, including this
+    one). _validate_mirror_target/_mirror_dismiss_options establish the
+    same rule this uses to tell them apart: an entity id always has a dot,
+    a bare service name never does.
     Targets are independent of each other, so fire them in parallel instead
     of waiting on each one in turn.
     """
 
-    async def _clear_one(entity_id: str) -> None:
-        issue_id = _mirror_target_issue_id(entity_id)
-        if hass.states.get(entity_id) is None:
-            # A target service call with no matching entity just silently
-            # does nothing (no exception) — the try/except below can't
-            # catch this case at all, so it's checked explicitly here.
+    async def _clear_one(target: str) -> None:
+        issue_id = _mirror_target_issue_id(target)
+        payload = {"message": "clear_notification", "data": {"tag": tag}}
+
+        if "." in target:
+            if hass.states.get(target) is None:
+                # A target service call with no matching entity just
+                # silently does nothing (no exception) — the try/except
+                # below can't catch this case at all, so it's checked
+                # explicitly here.
+                ir.async_create_issue(
+                    hass,
+                    DOMAIN,
+                    issue_id,
+                    is_fixable=False,
+                    severity=ir.IssueSeverity.WARNING,
+                    translation_key="missing_mirror_target",
+                    translation_placeholders={"entity_id": target},
+                )
+                return
+            ir.async_delete_issue(hass, DOMAIN, issue_id)
+            try:
+                await hass.services.async_call(
+                    "notify", "send_message", payload, target={"entity_id": target}, blocking=False
+                )
+            except Exception:  # noqa: BLE001
+                _LOGGER.warning("Could not forward clear_notification to %s", target)
+            return
+
+        if not hass.services.has_service("notify", target):
             ir.async_create_issue(
                 hass,
                 DOMAIN,
@@ -291,22 +347,17 @@ async def _async_mirror_clear(hass: HomeAssistant, tag: str) -> None:
                 is_fixable=False,
                 severity=ir.IssueSeverity.WARNING,
                 translation_key="missing_mirror_target",
-                translation_placeholders={"entity_id": entity_id},
+                translation_placeholders={"entity_id": target},
             )
             return
         ir.async_delete_issue(hass, DOMAIN, issue_id)
-
         try:
-            await hass.services.async_call(
-                "notify",
-                "send_message",
-                {"message": "clear_notification", "data": {"tag": tag}},
-                target={"entity_id": entity_id},
-                blocking=False,
-            )
+            # The service name itself is the target here — a raw legacy
+            # service call, not the entity-based target selector above.
+            await hass.services.async_call("notify", target, payload, blocking=False)
         except Exception:  # noqa: BLE001
-            _LOGGER.warning("Could not forward clear_notification to %s", entity_id)
+            _LOGGER.warning("Could not forward clear_notification to %s", target)
 
     await asyncio.gather(
-        *(_clear_one(entity_id) for entity_id in get_domain_data(hass)["mirror_dismiss_to"])
+        *(_clear_one(target) for target in get_domain_data(hass)["mirror_dismiss_to"])
     )
