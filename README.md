@@ -76,6 +76,8 @@ data:
 
 ### Supported `data` fields
 
+These mirror the Companion App's own notification payload — see its docs for the full field behavior/edge cases: [basic fields](https://companion.home-assistant.io/docs/notifications/notifications-basic/), [actionable notifications](https://companion.home-assistant.io/docs/notifications/actionable-notifications/), [live activities](https://companion.home-assistant.io/docs/notifications/live-activities/).
+
 A payload with `live_update: true` is tracked as a live activity instead of a regular notification — several fields below only apply to that mode.
 
 | Field | Applies to | Does |
