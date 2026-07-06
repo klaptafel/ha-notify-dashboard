@@ -15,7 +15,7 @@
 // status bar chip slot with chronometer, which wins when both are set,
 // same as the companion app). progress_indeterminate is picked up too.
 
-const CARD_VERSION = '0.1.7';
+const CARD_VERSION = '1.0.0';
 
 const CARD_DEFAULTS = {
   layout: 'single', // or: split

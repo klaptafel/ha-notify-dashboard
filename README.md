@@ -3,10 +3,7 @@
 
 # Notify Dashboard
 
-> [!NOTE]
-> Early scaffold. The design is fully worked out (see [`notify-dashboard-ontwerp.md`](./notify-dashboard-ontwerp.md)), but this hasn't been tested against a running Home Assistant instance yet.
-
-A `notify.dashboard` notify service plus a matching Lovelace card, so notifications you already send to your phone also show up on your dashboard — tags, actions, and (eventually) live-progress the same way the Companion App's `live_update` does.
+A `notify.dashboard` notify service plus a matching Lovelace card, so notifications you already send to your phone also show up on your dashboard — tags, actions, live activities, and live-progress the same way the Companion App's `live_update` does.
 
 ---
 

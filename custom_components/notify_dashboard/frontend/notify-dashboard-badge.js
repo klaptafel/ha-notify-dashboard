@@ -3,7 +3,7 @@
 // FASE 2 — nog niet geïmplementeerd, en bewust nog niet geregistreerd via
 // frontend.add_extra_js_url in __init__.py.
 //
-// Ontwerp (zie notify-dashboard-ontwerp.md, sectie 4):
+// Ontwerp:
 // - Los LovelaceBadge-element (customBadges, niet customCards)
 // - Toont het aantal `notifications` (geen live_activities)
 // - Zelfde filter_tags/filter_groups als de card
