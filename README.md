@@ -37,7 +37,7 @@ This integration isn't in the HACS default store yet — add it as a custom repo
 
 [![Add integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start?domain=notify_dashboard)
 
-1. **Settings → Devices & Services → Add Integration → Notify Dashboard.** Sets up the store, services, and frontend, and optionally lets you pick `notify.*` targets that should also get `clear_notification` when a notification is dismissed here.
+1. **Settings → Devices & Services → Add Integration → Notify Dashboard.** Sets up the store, services, and frontend, and shows an **"Also clear notifications on"** field — pick one or more `notify.*` targets that should also get `clear_notification` when a notification is dismissed here. Optional, can be left empty, and can be changed later via **Settings → Devices & Services → Notify Dashboard → Configure**.
 2. **Add the notify platform in YAML** — legacy notify platforms can't be set up through the UI:
    ```yaml
    notify:
