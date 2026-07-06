@@ -76,11 +76,12 @@ data:
 
 ### Supported `data` fields
 
+A payload with `live_update: true` is tracked as a live activity instead of a regular notification — several fields below only apply to that mode.
+
 | Field | Applies to | Does |
 |---|---|---|
 | `tag` | Any | Sending the same `tag` again replaces it in place; `clear_notification` + `tag` removes it. |
-| `group` | Any | Free-form label for grouping/filtering (`filter_groups`). |
-| `live_update: true` | — | Tracks it as a live activity instead of a regular notification. |
+| `group` | Any | Free-form label for grouping/filtering (`filter_groups`) — not currently used for visual clustering, items aren't sorted by it. |
 | `persistent: true` | Any | Excluded from `dismiss_all`; can't be dismissed from the card or the `dismiss` service. |
 | `timeout` | Notification only | Seconds until auto-removal. Without it, a notification is only capped by the 30-day/100-item retention limit — live activities never use `timeout`; they expire 8h after their last update instead. |
 | `notification_icon` / `notification_icon_color` | Any | Icon override and its background wash color. |
