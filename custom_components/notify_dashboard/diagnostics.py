@@ -17,7 +17,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from . import get_domain_data
-from .store import is_persistent, live_activities_list
+from .store import is_active, is_live_update, is_persistent
 
 
 async def async_get_config_entry_diagnostics(
@@ -25,9 +25,12 @@ async def async_get_config_entry_diagnostics(
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
     domain_data = get_domain_data(hass)
-    store_data = domain_data["store"].data
-    notifications = store_data["notifications"]
-    live_activities = live_activities_list(store_data)
+    items = domain_data["store"].data["items"]
+
+    active = [i for i in items if is_active(i)]
+    notifications = [i for i in active if not is_live_update(i)]
+    live_activities = [i for i in active if is_live_update(i)]
+    dismissed = [i for i in items if not is_active(i)]
 
     return {
         "config": {
@@ -53,9 +56,10 @@ async def async_get_config_entry_diagnostics(
             ),
         },
         "dismissed": {
-            "count": len(store_data["dismissed"]),
+            "count": len(dismissed),
             "newest_dismissed_at": max(
-                (d["dismissed_at"] for d in store_data["dismissed"]), default=None
+                (d["dismissed_at"] for d in dismissed if d["dismissed_at"] is not None),
+                default=None,
             ),
         },
     }

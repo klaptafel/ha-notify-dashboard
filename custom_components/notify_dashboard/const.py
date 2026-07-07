@@ -43,22 +43,25 @@ def validate_mirror_target(value: str) -> str:
 STORAGE_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}.notifications"
 
-# Retention (see design doc, point 7)
-MAX_NOTIFICATIONS = 100
+# Retention (see design doc, point 7). One unified cap across active +
+# dismissed entries (store.py's Entry), replacing what used to be three
+# separate limits (a notification cap, a live-activity staleness window,
+# and a separate dismissed-log cap). Already-dismissed entries are evicted
+# first (oldest first); active entries are only dropped once there aren't
+# enough dismissed ones left to make room — see store.py's _apply_cap.
+MAX_ITEMS = 50
 MAX_AGE_DAYS = 30
 LIVE_ACTIVITY_STALE_HOURS = 8
-MAX_DISMISSED = 20
 
-# Dismissed-history entry reasons (store.py's DismissedEntry) — shared
-# constants so store.py/tests all use the same literal strings instead of
-# independently retyping them. No separate "kind" concept: whether a
-# dismissed entry was a live activity is just its own live_update flag,
-# read straight from the data it already carries.
+# Dismiss reasons (store.py's Entry.dismiss_reason) — shared constants so
+# store.py/tests all use the same literal strings instead of independently
+# retyping them. No separate "kind" concept: whether an entry is a live
+# activity is just its own live_update flag, read straight from the data
+# it already carries.
 DISMISS_REASON_DISMISS = "dismiss"
 DISMISS_REASON_DISMISS_ALL = "dismiss_all"
 DISMISS_REASON_CLEAR_NOTIFICATION = "clear_notification"
 DISMISS_REASON_TIMEOUT = "timeout"
-DISMISS_REASON_CAPACITY = "capacity"
 DISMISS_REASON_STALE = "stale"
 
 # Command messages that must never be shown as content

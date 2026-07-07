@@ -1,6 +1,8 @@
 // notify-dashboard-card.js
 // Lovelace card for the notify_dashboard integration.
-// Reads sensor.notify_dashboard (attributes: notifications[], live_activities[]).
+// Reads sensor.notify_dashboard (attribute: items[] — notifications and
+// live activities together, told apart by data.live_update; active and
+// recently-dismissed entries alike, told apart by dismissed_at).
 //
 // Status: fase 1, including a visual editor (tab skeleton taken 1-to-1 from
 // package-tracker-card: tab bar, ha-switch/ha-form rows, config-changed +
@@ -805,16 +807,24 @@ class NotifyDashboardCard extends HTMLElement {
     // here would then just be pure repeated work.
     const sortPerKind = groupOrder !== 'chronological';
 
-    const collect = (key, kind) => {
+    // `items` holds both kinds together, told apart by data.live_update
+    // (same field the companion app itself uses — no separate kind label
+    // on the sensor) and both active + recently-dismissed entries
+    // (dismissed_at set) — the card only ever shows active ones.
+    const active = (attrs.items || []).filter((item) => !item.dismissed_at);
+
+    const collect = (kind, key) => {
       if (!content.includes(key)) return [];
-      const arr = (attrs[key] || [])
-        .filter((n) => matchesFilter(n, filterTags, filterGroups, excludeTags, excludeGroups))
-        .map((n) => ({ ...n, _kind: kind }));
+      const isLive = kind === 'live_activities';
+      const arr = active
+        .filter((item) => !!item.data?.live_update === isLive)
+        .filter((item) => matchesFilter(item, filterTags, filterGroups, excludeTags, excludeGroups))
+        .map((item) => ({ ...item, _kind: kind }));
       return sortPerKind ? arr.sort(byNewest) : arr;
     };
 
-    const notif = collect('notifications', 'notifications');
     const live = collect('live_activities', 'live_activities');
+    const notif = collect('notifications', 'notifications');
 
     let items;
     if (groupOrder === 'chronological') {

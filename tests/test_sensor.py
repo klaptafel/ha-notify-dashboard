@@ -70,20 +70,22 @@ async def test_sensor_populates_state_on_add(hass, loaded_store):
     sensor = await _add_sensor(hass)
     state = hass.states.get(sensor.entity_id)
     assert state.state == "1"
-    assert len(state.attributes["notifications"]) == 1
-    assert state.attributes["live_activities"] == []
-    assert state.attributes["dismissed"] == []
+    assert len(state.attributes["items"]) == 1
+    assert state.attributes["items"][0]["tag"] == "t1"
 
 
-async def test_sensor_exposes_dismissed_history(hass, loaded_store):
+async def test_sensor_state_counts_active_only_not_dismissed(hass, loaded_store):
+    """native_value is "how many things need attention now" — dismissed
+    entries stick around in `items` for history, but shouldn't inflate it."""
     await loaded_store.async_add_notification("T", "M", {"tag": "t1"})
-    await loaded_store.async_dismiss(loaded_store.data["notifications"][0]["id"])
+    await loaded_store.async_dismiss(loaded_store.data["items"][0]["id"])
     hass.data[DOMAIN] = {"store": loaded_store}
 
     sensor = await _add_sensor(hass)
     state = hass.states.get(sensor.entity_id)
-    assert len(state.attributes["dismissed"]) == 1
-    assert state.attributes["dismissed"][0]["tag"] == "t1"
+    assert state.state == "0"
+    assert len(state.attributes["items"]) == 1  # still present, just inactive
+    assert state.attributes["items"][0]["dismissed_at"] is not None
 
 
 async def test_sensor_updates_reactively_via_dispatcher(hass, loaded_store):
@@ -103,7 +105,7 @@ async def test_sensor_no_update_without_signal(hass, loaded_store):
     assert hass.states.get(sensor.entity_id).state == "0"
 
     # Mutate the store WITHOUT going through a method that dispatches.
-    loaded_store.data["notifications"].append({"id": "x"})
+    loaded_store.data["items"].append({"id": "x", "dismissed_at": None})
     assert hass.states.get(sensor.entity_id).state == "0"  # stale until a signal fires
 
     async_dispatcher_send(hass, SIGNAL_UPDATE)

@@ -39,8 +39,8 @@ async def test_diagnostics_reports_aggregates_not_content(hass, loaded_store):
     await loaded_store.async_add_notification(
         "T2", "M2", {"tag": "b", "persistent": True}
     )
-    await loaded_store.async_upsert_live_activity("T3", "M3", {"tag": "job1"})
-    await loaded_store.async_dismiss(loaded_store.data["notifications"][-1]["id"])
+    await loaded_store.async_upsert_live_activity("T3", "M3", {"tag": "job1", "live_update": True})
+    await loaded_store.async_dismiss(loaded_store.data["items"][-1]["id"])
 
     result = await async_get_config_entry_diagnostics(
         hass, MockConfigEntry(domain=DOMAIN, options={})

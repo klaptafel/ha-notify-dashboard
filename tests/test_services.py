@@ -27,6 +27,7 @@ from custom_components.notify_dashboard.const import (
     SERVICE_DISMISS_ALL,
     SERVICE_FIRE_ACTION,
 )
+from custom_components.notify_dashboard.store import is_active
 
 
 @pytest.fixture(autouse=True)
@@ -45,12 +46,12 @@ def store(hass):
 
 async def test_dismiss_removes_notification(hass, store):
     await store.async_add_notification("T", "M", {"tag": "t1"})
-    item_id = store.data["notifications"][0]["id"]
+    item_id = store.data["items"][0]["id"]
 
     await hass.services.async_call(
         DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
     )
-    assert store.data["notifications"] == []
+    assert not is_active(store.data["items"][0])
 
 
 async def test_dismiss_unknown_id_raises_service_validation_error(hass):
@@ -62,7 +63,7 @@ async def test_dismiss_unknown_id_raises_service_validation_error(hass):
 
 async def test_dismiss_persistent_raises_service_validation_error(hass, store):
     await store.async_add_notification("T", "M", {"tag": "t1", "persistent": True})
-    item_id = store.data["notifications"][0]["id"]
+    item_id = store.data["items"][0]["id"]
 
     with pytest.raises(ServiceValidationError):
         await hass.services.async_call(
@@ -74,7 +75,7 @@ async def test_dismiss_without_mirror_targets_does_not_call_notify(
     hass, store, mock_notify_target
 ):
     await store.async_add_notification("T", "M", {"tag": "t1"})
-    item_id = store.data["notifications"][0]["id"]
+    item_id = store.data["items"][0]["id"]
 
     await hass.services.async_call(
         DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
@@ -87,7 +88,7 @@ async def test_dismiss_with_mirror_targets_forwards_clear_notification(
 ):
     hass.data[DOMAIN]["mirror_dismiss_to"] = ["notify.mobile_app"]
     await store.async_add_notification("T", "M", {"tag": "t1"})
-    item_id = store.data["notifications"][0]["id"]
+    item_id = store.data["items"][0]["id"]
 
     await hass.services.async_call(
         DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
@@ -103,7 +104,7 @@ async def test_dismiss_with_mirror_targets_forwards_clear_notification(
 async def test_dismiss_without_tag_does_not_forward(hass, store, mock_notify_target):
     hass.data[DOMAIN]["mirror_dismiss_to"] = ["notify.mobile_app"]
     await store.async_add_notification("T", "M", {})
-    item_id = store.data["notifications"][0]["id"]
+    item_id = store.data["items"][0]["id"]
 
     await hass.services.async_call(
         DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
@@ -122,21 +123,21 @@ async def test_dismiss_mirror_forward_failure_does_not_break_dismiss(hass, store
     hass.states.async_set("notify.mobile_app", "unknown")
     hass.data[DOMAIN]["mirror_dismiss_to"] = ["notify.mobile_app"]
     await store.async_add_notification("T", "M", {"tag": "t1"})
-    item_id = store.data["notifications"][0]["id"]
+    item_id = store.data["items"][0]["id"]
 
     await hass.services.async_call(
         DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
     )
     await hass.async_block_till_done()
 
-    assert store.data["notifications"] == []
+    assert not is_active(store.data["items"][0])
     assert ir.async_get(hass).async_get_issue(DOMAIN, "missing_mirror_target_notify.mobile_app") is None
 
 
 async def test_dismiss_missing_mirror_target_creates_repair_issue(hass, store):
     hass.data[DOMAIN]["mirror_dismiss_to"] = ["notify.mobile_app"]
     await store.async_add_notification("T", "M", {"tag": "t1"})
-    item_id = store.data["notifications"][0]["id"]
+    item_id = store.data["items"][0]["id"]
 
     await hass.services.async_call(
         DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
@@ -157,7 +158,7 @@ async def test_dismiss_mirror_target_reappearing_clears_repair_issue(
     # First: target missing, dismiss creates the issue.
     hass.states.async_remove("notify.mobile_app")
     await store.async_add_notification("T", "M", {"tag": "t1"})
-    item_id = store.data["notifications"][0]["id"]
+    item_id = store.data["items"][0]["id"]
     await hass.services.async_call(
         DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
     )
@@ -168,7 +169,7 @@ async def test_dismiss_mirror_target_reappearing_clears_repair_issue(
     # dismiss should self-heal by deleting the stale issue.
     hass.states.async_set("notify.mobile_app", "unknown")
     await store.async_add_notification("T", "M", {"tag": "t2"})
-    item_id = store.data["notifications"][0]["id"]
+    item_id = store.data["items"][0]["id"]
     await hass.services.async_call(
         DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
     )
@@ -182,8 +183,8 @@ async def test_dismiss_all_clears_and_keeps_persistent(hass, store):
 
     await hass.services.async_call(DOMAIN, SERVICE_DISMISS_ALL, {}, blocking=True)
 
-    remaining_tags = {n["tag"] for n in store.data["notifications"]}
-    assert remaining_tags == {"b"}
+    active_tags = {n["tag"] for n in store.data["items"] if is_active(n)}
+    assert active_tags == {"b"}
 
 
 async def test_dismiss_all_forwards_cleared_tags_to_mirror_targets(
@@ -217,7 +218,7 @@ async def test_dismiss_forwards_to_raw_notify_service(hass, store):
     group_calls = async_mock_service(hass, "notify", "family_notifications")
     hass.data[DOMAIN]["mirror_dismiss_to"] = ["family_notifications"]
     await store.async_add_notification("T", "M", {"tag": "t1"})
-    item_id = store.data["notifications"][0]["id"]
+    item_id = store.data["items"][0]["id"]
 
     await hass.services.async_call(
         DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
@@ -248,21 +249,21 @@ async def test_dismiss_raw_service_forward_failure_does_not_break_dismiss(hass, 
     )
     hass.data[DOMAIN]["mirror_dismiss_to"] = ["flaky_group"]
     await store.async_add_notification("T", "M", {"tag": "t1"})
-    item_id = store.data["notifications"][0]["id"]
+    item_id = store.data["items"][0]["id"]
 
     await hass.services.async_call(
         DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
     )
     await hass.async_block_till_done()
 
-    assert store.data["notifications"] == []
+    assert not is_active(store.data["items"][0])
     assert ir.async_get(hass).async_get_issue(DOMAIN, "missing_mirror_target_flaky_group") is None
 
 
 async def test_dismiss_missing_raw_service_creates_repair_issue(hass, store):
     hass.data[DOMAIN]["mirror_dismiss_to"] = ["nonexistent_group"]
     await store.async_add_notification("T", "M", {"tag": "t1"})
-    item_id = store.data["notifications"][0]["id"]
+    item_id = store.data["items"][0]["id"]
 
     await hass.services.async_call(
         DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
@@ -278,7 +279,7 @@ async def test_dismiss_raw_service_reappearing_clears_repair_issue(hass, store):
     hass.data[DOMAIN]["mirror_dismiss_to"] = ["family_notifications"]
 
     await store.async_add_notification("T", "M", {"tag": "t1"})
-    item_id = store.data["notifications"][0]["id"]
+    item_id = store.data["items"][0]["id"]
     await hass.services.async_call(
         DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
     )
@@ -290,7 +291,7 @@ async def test_dismiss_raw_service_reappearing_clears_repair_issue(hass, store):
 
     async_mock_service(hass, "notify", "family_notifications")
     await store.async_add_notification("T2", "M2", {"tag": "t2"})
-    item_id = store.data["notifications"][0]["id"]
+    item_id = store.data["items"][0]["id"]
     await hass.services.async_call(
         DOMAIN, SERVICE_DISMISS, {ATTR_ID: item_id}, blocking=True
     )
@@ -307,7 +308,7 @@ async def test_dismiss_raw_service_reappearing_clears_repair_issue(hass, store):
 async def test_expired_notification_forwards_mirror_dismiss(hass, store, mock_notify_target):
     hass.data[DOMAIN]["mirror_dismiss_to"] = ["notify.mobile_app"]
     await store.async_add_notification("T", "M", {"tag": "expiring", "timeout": 1})
-    store.data["notifications"][0]["created_at"] = time.time() - 100
+    store.data["items"][0]["created_at"] = time.time() - 100
 
     # Any subsequent store write runs cleanup first, discovering the
     # now-expired entry above — same as an explicit dismiss would.

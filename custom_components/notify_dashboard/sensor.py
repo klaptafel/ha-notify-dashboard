@@ -1,7 +1,8 @@
 """Sensor that exposes the notify_dashboard data to the frontend card.
 
-The card reads this entity's attributes (notifications / live_activities /
-dismissed). Updates reactively via a dispatcher signal as soon as the store
+The card reads this entity's `items` attribute — one list holding every
+notification/live activity, active and recently-dismissed alike (see
+store.py). Updates reactively via a dispatcher signal as soon as the store
 changes — no polling.
 """
 from __future__ import annotations
@@ -14,7 +15,7 @@ from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from . import get_domain_data
 from .const import DOMAIN, SIGNAL_UPDATE
-from .store import live_activities_list
+from .store import is_active
 
 
 async def async_setup_platform(
@@ -28,7 +29,7 @@ async def async_setup_platform(
 
 
 class NotifyDashboardSensor(SensorEntity):
-    """Exposes notifications + live_activities as attributes for the card."""
+    """Exposes the unified item list as an attribute for the card."""
 
     _attr_has_entity_name = True
     _attr_translation_key = "dashboard"
@@ -45,13 +46,10 @@ class NotifyDashboardSensor(SensorEntity):
     @callback
     def _handle_update(self) -> None:
         store = get_domain_data(self.hass)["store"]
-        data = store.data
-        notifications = data["notifications"]
-        live_activities = live_activities_list(data)
-        self._attr_native_value = len(notifications) + len(live_activities)
-        self._attr_extra_state_attributes = {
-            "notifications": notifications,
-            "live_activities": live_activities,
-            "dismissed": data["dismissed"],
-        }
+        items = store.data["items"]
+        # The state itself is "how many things need attention now" — active
+        # count, not the historical total (dismissed entries stick around
+        # in `items` for a while, but shouldn't inflate the headline number).
+        self._attr_native_value = sum(1 for item in items if is_active(item))
+        self._attr_extra_state_attributes = {"items": items}
         self.async_write_ha_state()
