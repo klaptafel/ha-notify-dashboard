@@ -189,6 +189,27 @@ async def test_upsert_live_activity_preserves_created_at_across_updates(loaded_s
     assert loaded_store.data["items"][0]["created_at"] == first_created_at
 
 
+async def test_upsert_live_activity_reusing_tag_of_dismissed_one_has_no_id_collision(
+    loaded_store,
+):
+    """A live activity's id is its own tag (so dismiss-by-tag keeps
+    working) — starting a new one under a tag whose previous run was
+    already dismissed (and so still lingers in history) must not leave two
+    entries sharing that id, or id-keyed lookups (dismiss-by-id, the
+    frontend's per-row identity) get confused about which one is real."""
+    await loaded_store.async_upsert_live_activity(
+        "T", "old run", {"tag": "job1", "live_update": True, "progress": 10}
+    )
+    await loaded_store.async_clear_by_tag("job1")  # dismissed, but still in items
+    await loaded_store.async_upsert_live_activity(
+        "T", "new run", {"tag": "job1", "live_update": True, "progress": 5}
+    )
+    matches = [e for e in loaded_store.data["items"] if e["id"] == "job1"]
+    assert len(matches) == 1
+    assert matches[0]["message"] == "new run"
+    assert is_active(matches[0])
+
+
 async def test_upsert_live_activity_progress_minus_one_is_not_special(loaded_store):
     """progress: -1 isn't a documented companion-app sentinel (confirmed
     against the actual docs — the real way to end a live activity is

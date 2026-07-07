@@ -302,10 +302,18 @@ class NotifyDashboardStore:
         # that's its own routing condition, but this removes the footgun).
         data = {**data, "live_update": True}
         now = time.time()
-        existing = self._find_active_by_tag(tag)
-        created_at = existing["created_at"] if existing is not None else now
-        if existing is not None:
-            self._data["items"].remove(existing)
+        existing_active = self._find_active_by_tag(tag)
+        created_at = existing_active["created_at"] if existing_active is not None else now
+        # A live activity's id IS its tag (dismiss-by-tag is a documented,
+        # public part of the dismiss service — changing that to a fresh
+        # uuid would break it), so any entry sharing this id has to go
+        # before inserting the new one — not just the active one. Without
+        # this, a new activity reusing a tag whose previous run was already
+        # dismissed (but still lingering in history since dismissal no
+        # longer removes entries) would collide with it: two entries with
+        # the identical id, breaking id-keyed lookups (dismiss-by-id here,
+        # and the frontend's per-row DOM identity).
+        self._data["items"] = [e for e in self._data["items"] if e["id"] != tag]
         entry: Entry = {
             "id": tag,
             "title": title,
