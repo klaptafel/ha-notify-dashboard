@@ -27,6 +27,8 @@ from custom_components.notify_dashboard.store import (
     NotificationNotDismissableError,
     NotificationNotFoundError,
     NotifyDashboardStore,
+    entry_group,
+    entry_tag,
     is_active,
 )
 
@@ -48,14 +50,11 @@ async def test_store_restores_persisted_data(hass, hass_storage):
             "items": [
                 {
                     "id": "abc",
-                    "tag": "t1",
-                    "group": None,
                     "title": "T",
                     "message": "M",
-                    "data": {},
+                    "data": {"tag": "t1"},
                     "created_at": now,
                     "updated_at": now,
-                    "timeout": None,
                     "dismissed_at": None,
                     "dismiss_reason": None,
                 }
@@ -97,14 +96,11 @@ async def test_load_runs_cleanup_immediately(hass, hass_storage):
             "items": [
                 {
                     "id": "old",
-                    "tag": "t1",
-                    "group": None,
                     "title": "T",
                     "message": "M",
-                    "data": {},
+                    "data": {"tag": "t1"},
                     "created_at": expired_at,
                     "updated_at": expired_at,
-                    "timeout": None,
                     "dismissed_at": None,
                     "dismiss_reason": None,
                 }
@@ -281,7 +277,7 @@ async def test_dismiss_persistent_live_activity_still_dismissable(loaded_store):
         "T", "M", {"tag": "job1", "live_update": True, "persistent": True}
     )
     dismissed = await loaded_store.async_dismiss("job1")
-    assert dismissed["tag"] == "job1"
+    assert entry_tag(dismissed) == "job1"
     assert not is_active(loaded_store.data["items"][0])
 
 
@@ -307,7 +303,7 @@ async def test_dismiss_already_dismissed_id_raises(loaded_store):
 async def test_dismiss_live_activity_by_tag(loaded_store):
     await loaded_store.async_upsert_live_activity("T", "M", {"tag": "job1", "live_update": True})
     dismissed = await loaded_store.async_dismiss("job1")
-    assert dismissed["tag"] == "job1"
+    assert entry_tag(dismissed) == "job1"
     assert not is_active(loaded_store.data["items"][0])
 
 
@@ -318,8 +314,8 @@ async def test_dismiss_all_keeps_persistent_returns_cleared(loaded_store):
     await loaded_store.async_add_notification("T", "M", {"tag": "a"})
     await loaded_store.async_add_notification("T", "M", {"tag": "b", "persistent": True})
     cleared = await loaded_store.async_dismiss_all_notifications()
-    assert {item["tag"] for item in cleared} == {"a"}
-    active_tags = {i["tag"] for i in loaded_store.data["items"] if is_active(i)}
+    assert {entry_tag(item) for item in cleared} == {"a"}
+    active_tags = {entry_tag(i) for i in loaded_store.data["items"] if is_active(i)}
     assert active_tags == {"b"}
 
 
@@ -327,7 +323,7 @@ async def test_dismiss_all_leaves_live_activities_untouched(loaded_store):
     await loaded_store.async_add_notification("T", "M", {"tag": "a"})
     await loaded_store.async_upsert_live_activity("T", "M", {"tag": "job1", "live_update": True})
     await loaded_store.async_dismiss_all_notifications()
-    active_tags = {i["tag"] for i in loaded_store.data["items"] if is_active(i)}
+    active_tags = {entry_tag(i) for i in loaded_store.data["items"] if is_active(i)}
     assert active_tags == {"job1"}
 
 
@@ -371,7 +367,7 @@ async def test_cleanup_hard_cap_purges_dismissed_entry(loaded_store):
     await loaded_store.async_dismiss(loaded_store.data["items"][0]["id"])
     for i in range(MAX_ITEMS):
         await loaded_store.async_add_notification(f"T{i}", f"M{i}", {"tag": f"t{i}"})
-    tags = [i["tag"] for i in loaded_store.data["items"]]
+    tags = [entry_tag(i) for i in loaded_store.data["items"]]
     assert "oldest" not in tags
     assert len(loaded_store.data["items"]) == MAX_ITEMS
 
@@ -386,7 +382,7 @@ async def test_cleanup_hard_cap_prefers_evicting_dismissed_over_active(loaded_st
     for i in range(MAX_ITEMS - 1):
         await loaded_store.async_add_notification(f"T{i}", f"M{i}", {"tag": f"t{i}"})
 
-    tags = [i["tag"] for i in loaded_store.data["items"]]
+    tags = [entry_tag(i) for i in loaded_store.data["items"]]
     assert "old_active" in tags  # protected: still active, and a dismissed victim existed
     assert "recent_dismissed" not in tags  # evicted instead, despite being newer
     assert len(loaded_store.data["items"]) == MAX_ITEMS
@@ -525,14 +521,11 @@ async def test_on_expired_not_called_during_async_load_startup_cleanup(
             "items": [
                 {
                     "id": "old",
-                    "tag": "t1",
-                    "group": None,
                     "title": "T",
                     "message": "M",
-                    "data": {},
+                    "data": {"tag": "t1"},
                     "created_at": expired_at,
                     "updated_at": expired_at,
-                    "timeout": None,
                     "dismissed_at": None,
                     "dismiss_reason": None,
                 }
@@ -566,8 +559,8 @@ async def test_dismiss_records_reason_and_timestamp(loaded_store):
     item_id = loaded_store.data["items"][0]["id"]
     await loaded_store.async_dismiss(item_id)
     entry = loaded_store.data["items"][0]
-    assert entry["tag"] == "t1"
-    assert entry["group"] == "g1"
+    assert entry_tag(entry) == "t1"
+    assert entry_group(entry) == "g1"
     assert entry["dismiss_reason"] == DISMISS_REASON_DISMISS
     assert isinstance(entry["dismissed_at"], float)
 
@@ -577,7 +570,7 @@ async def test_dismiss_all_records_dismiss_all_reason(loaded_store):
     await loaded_store.async_add_notification("T", "M", {"tag": "b", "persistent": True})
     await loaded_store.async_dismiss_all_notifications()
     reasons = {
-        e["tag"]: e["dismiss_reason"] for e in loaded_store.data["items"] if not is_active(e)
+        entry_tag(e): e["dismiss_reason"] for e in loaded_store.data["items"] if not is_active(e)
     }
     assert reasons == {"a": DISMISS_REASON_DISMISS_ALL}
 
@@ -589,7 +582,7 @@ async def test_clear_by_tag_records_clear_notification_reason_for_both_kinds(loa
     )
     await loaded_store.async_clear_by_tag("notif")
     await loaded_store.async_clear_by_tag("activity")
-    reasons = {e["tag"]: e["dismiss_reason"] for e in loaded_store.data["items"]}
+    reasons = {entry_tag(e): e["dismiss_reason"] for e in loaded_store.data["items"]}
     assert reasons == {
         "notif": DISMISS_REASON_CLEAR_NOTIFICATION,
         "activity": DISMISS_REASON_CLEAR_NOTIFICATION,
@@ -604,5 +597,5 @@ async def test_dismissed_entries_stay_newest_first_by_original_position(loaded_s
     await loaded_store.async_add_notification("T2", "M2", {"tag": "b"})
     # Dismiss the OLDER one (b is newer, at index 0; a is older, at index 1).
     await loaded_store.async_dismiss(loaded_store.data["items"][1]["id"])
-    tags = [i["tag"] for i in loaded_store.data["items"]]
+    tags = [entry_tag(i) for i in loaded_store.data["items"]]
     assert tags == ["b", "a"]

@@ -385,8 +385,8 @@ function mkIcon(icon, color) {
 }
 
 function matchesFilter(item, filterTags, filterGroups, excludeTags, excludeGroups) {
-  const tag = item.tag ?? item.data?.tag;
-  const group = item.group ?? item.data?.group;
+  const tag = item.data?.tag;
+  const group = item.data?.group;
   if (filterTags.length && !filterTags.includes(tag)) return false;
   if (filterGroups.length && !filterGroups.includes(group)) return false;
   // Exclude wins over include — an explicit denylist entry should always
@@ -527,7 +527,7 @@ class NotifyDashboardCard extends HTMLElement {
     // action_data, tag), so existing wait_for_trigger automations keep
     // working unchanged.
     const payload = { action };
-    if (item.tag) payload.tag = item.tag;
+    if (item.data?.tag) payload.tag = item.data.tag;
     if (actionData != null) payload.action_data = actionData;
     this._hass
       .callService('notify_dashboard', 'fire_action', payload)
@@ -645,9 +645,9 @@ class NotifyDashboardCard extends HTMLElement {
     // not a countdown.
     const debugCfg = this._config.debug;
     if (debugCfg && (debugCfg.tag || debugCfg.group || debugCfg.timeout)) {
-      const tag = item.tag ?? data.tag;
-      const group = item.group ?? data.group;
-      const timeout = item.timeout ?? data.timeout;
+      const tag = data.tag;
+      const group = data.group;
+      const timeout = data.timeout;
       const parts = [];
       if (debugCfg.tag && tag) parts.push({ icon: 'mdi:tag-outline', text: tag });
       if (debugCfg.group && group) parts.push({ icon: 'mdi:folder-multiple-outline', text: group });

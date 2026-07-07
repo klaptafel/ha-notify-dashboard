@@ -27,7 +27,7 @@ from custom_components.notify_dashboard.const import (
     SERVICE_DISMISS_ALL,
     SERVICE_FIRE_ACTION,
 )
-from custom_components.notify_dashboard.store import is_active
+from custom_components.notify_dashboard.store import entry_tag, is_active
 
 
 @pytest.fixture(autouse=True)
@@ -183,7 +183,7 @@ async def test_dismiss_all_clears_and_keeps_persistent(hass, store):
 
     await hass.services.async_call(DOMAIN, SERVICE_DISMISS_ALL, {}, blocking=True)
 
-    active_tags = {n["tag"] for n in store.data["items"] if is_active(n)}
+    active_tags = {entry_tag(n) for n in store.data["items"] if is_active(n)}
     assert active_tags == {"b"}
 
 

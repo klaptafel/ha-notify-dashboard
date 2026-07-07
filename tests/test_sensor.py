@@ -71,7 +71,7 @@ async def test_sensor_populates_state_on_add(hass, loaded_store):
     state = hass.states.get(sensor.entity_id)
     assert state.state == "1"
     assert len(state.attributes["items"]) == 1
-    assert state.attributes["items"][0]["tag"] == "t1"
+    assert state.attributes["items"][0]["data"]["tag"] == "t1"
 
 
 async def test_sensor_state_counts_active_only_not_dismissed(hass, loaded_store):

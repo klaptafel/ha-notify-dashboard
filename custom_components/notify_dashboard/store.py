@@ -45,17 +45,21 @@ class Entry(TypedDict):
     (is_live_update tells them apart), active or dismissed (dismissed_at
     is None while active). Kept in the list after dismissal so the sensor
     can show recent history; only the MAX_ITEMS cap ever drops one outright.
+
+    tag/group/timeout are deliberately *not* fields here even though every
+    entry has them in practice — they're always in `data` already (the
+    companion-app payload itself), so a second top-level copy would be
+    pure duplication (same reasoning as is_live_update/is_persistent below,
+    just for entries instead of dismiss reasons). Use entry_tag/entry_group/
+    entry_timeout to read them.
     """
 
     id: str
-    tag: str | None
-    group: str | None
     title: str | None
     message: str
     data: dict[str, Any]
     created_at: float
     updated_at: float
-    timeout: float | None
     dismissed_at: float | None
     dismiss_reason: str | None
 
@@ -79,6 +83,18 @@ class NotificationNotDismissableError(Exception):
     live activity's own lifecycle is normally ended via clear_notification,
     but the manual close button always works too).
     """
+
+
+def entry_tag(entry: Entry) -> str | None:
+    return entry["data"].get("tag")
+
+
+def entry_group(entry: Entry) -> str | None:
+    return entry["data"].get("group")
+
+
+def entry_timeout(entry: Entry) -> float | None:
+    return entry["data"].get("timeout")
 
 
 def is_live_update(entry: Entry) -> bool:
@@ -165,7 +181,7 @@ class NotifyDashboardStore:
 
     def _find_active_by_tag(self, tag: str) -> Entry | None:
         return next(
-            (e for e in self._data["items"] if e.get("tag") == tag and is_active(e)), None
+            (e for e in self._data["items"] if entry_tag(e) == tag and is_active(e)), None
         )
 
     def _cleanup(self) -> tuple[list[str], bool]:
@@ -194,7 +210,7 @@ class NotifyDashboardStore:
                 expired = now - entry["updated_at"] >= stale_after
                 reason = DISMISS_REASON_STALE
             else:
-                timeout = entry.get("timeout")
+                timeout = entry_timeout(entry)
                 expires_at = entry["created_at"] + timeout if timeout else entry["created_at"] + max_age
                 expired = now >= expires_at
                 reason = DISMISS_REASON_TIMEOUT
@@ -202,7 +218,7 @@ class NotifyDashboardStore:
                 entry["dismissed_at"] = now
                 entry["dismiss_reason"] = reason
                 anything_changed = True
-                if tag := entry.get("tag"):
+                if tag := entry_tag(entry):
                     changed_tags.append(tag)
 
         cap_tags, cap_changed = self._apply_cap()
@@ -240,7 +256,7 @@ class NotifyDashboardStore:
             to_evict += active[-still_needed:]
 
         evict_ids = {e["id"] for e in to_evict}
-        evicted_tags = [tag for e in to_evict if is_active(e) and (tag := e.get("tag"))]
+        evicted_tags = [tag for e in to_evict if is_active(e) and (tag := entry_tag(e))]
         self._data["items"] = [e for e in items if e["id"] not in evict_ids]
         return evicted_tags, bool(to_evict)
 
@@ -258,14 +274,11 @@ class NotifyDashboardStore:
                 self._data["items"].remove(existing)
         entry: Entry = {
             "id": str(uuid.uuid4()),
-            "tag": tag,
-            "group": data.get("group"),
             "title": title,
             "message": message,
             "data": data,
             "created_at": now,
             "updated_at": now,
-            "timeout": data.get("timeout"),
             "dismissed_at": None,
             "dismiss_reason": None,
         }
@@ -295,14 +308,11 @@ class NotifyDashboardStore:
             self._data["items"].remove(existing)
         entry: Entry = {
             "id": tag,
-            "tag": tag,
-            "group": data.get("group"),
             "title": title,
             "message": message,
             "data": data,
             "created_at": created_at,
             "updated_at": now,
-            "timeout": None,
             "dismissed_at": None,
             "dismiss_reason": None,
         }
@@ -347,7 +357,7 @@ class NotifyDashboardStore:
         match["dismissed_at"] = time.time()
         match["dismiss_reason"] = DISMISS_REASON_DISMISS
         await self._async_save()
-        if tag := match.get("tag"):
+        if tag := entry_tag(match):
             await self._notify_removed([tag])
         return match
 
@@ -366,6 +376,6 @@ class NotifyDashboardStore:
             entry["dismiss_reason"] = DISMISS_REASON_DISMISS_ALL
             cleared.append(entry)
         await self._async_save()
-        tags = [tag for item in cleared if (tag := item.get("tag"))]
+        tags = [tag for item in cleared if (tag := entry_tag(item))]
         await self._notify_removed(tags)
         return cleared
