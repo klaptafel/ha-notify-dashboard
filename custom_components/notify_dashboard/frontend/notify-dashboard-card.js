@@ -17,7 +17,7 @@
 // status bar chip slot with chronometer, which wins when both are set,
 // same as the companion app). progress_indeterminate is picked up too.
 
-const CARD_VERSION = '1.1.1';
+const CARD_VERSION = '1.1.2';
 
 const CARD_DEFAULTS = {
   layout: 'single', // or: split
@@ -36,8 +36,10 @@ const CARD_DEFAULTS = {
   // YAML-only — deliberately not in the visual editor (see
   // NotifyDashboardCardEditor's header comment): this is a debugging aid,
   // not a real feature, so an editor field for it would just invite
-  // permanently-on debug metadata nobody meant to keep.
-  debug: { tag: false, group: false, timeout: false },
+  // permanently-on debug metadata nobody meant to keep. dismissed shows
+  // recently-dismissed items too (faded, no close button, with a reason
+  // chip) instead of hiding them like the card normally does.
+  debug: { tag: false, group: false, timeout: false, dismissed: false },
 };
 
 const CARD_CSS = `
@@ -62,6 +64,9 @@ const CARD_CSS = `
     background: transparent;
   }
   .row + .row { border-top: 1px solid var(--divider-color, rgba(0,0,0,.06)); }
+  /* debug.dismissed only — a recently-dismissed item shown as read-only
+     history, not a live one. */
+  .row-ghost { opacity: .5; }
 
   /* flex-start (not center): icon/dismiss must stay pinned to the top and
      never sink down when the message spans multiple lines. Short content
@@ -560,8 +565,13 @@ class NotifyDashboardCard extends HTMLElement {
     const url = data.url || data.clickAction || null;
     const persistent = !!data.persistent;
     const actions = Array.isArray(data.actions) ? data.actions : [];
+    // Only ever true when debug.dismissed asked _collectItems() to include
+    // these at all — faded + no close button (dismissing an already-
+    // dismissed entry would just fail server-side), so it reads as a
+    // read-only history entry, not a live, actionable one.
+    const isDismissed = !!item.dismissed_at;
 
-    const row = mk('div', 'row');
+    const row = mk('div', 'row' + (isDismissed ? ' row-ghost' : ''));
     // Low-opacity wash, not a solid fill — see the .row CSS comment on why
     // an arbitrary user-supplied color stays off of text/large surfaces.
     if (data.color) row.style.background = `color-mix(in srgb, ${data.color} 12%, transparent)`;
@@ -642,9 +652,11 @@ class NotifyDashboardCard extends HTMLElement {
     // shape as package-tracker-card's .carrier row (confirmed directly
     // against its actual source — not a pill/chip, no background at all).
     // Static, not live-ticking: it's showing the configured values as sent,
-    // not a countdown.
+    // not a countdown. The dismiss-reason chip always shows on a dismissed
+    // item (regardless of the tag/group/timeout toggles) — that's the
+    // whole point of turning debug.dismissed on in the first place.
     const debugCfg = this._config.debug;
-    if (debugCfg && (debugCfg.tag || debugCfg.group || debugCfg.timeout)) {
+    if (debugCfg && (debugCfg.tag || debugCfg.group || debugCfg.timeout || isDismissed)) {
       const tag = data.tag;
       const group = data.group;
       const timeout = data.timeout;
@@ -653,6 +665,12 @@ class NotifyDashboardCard extends HTMLElement {
       if (debugCfg.group && group) parts.push({ icon: 'mdi:folder-multiple-outline', text: group });
       if (debugCfg.timeout && Number.isFinite(timeout)) {
         parts.push({ icon: 'mdi:timer-outline', text: this._formatChrono(timeout) });
+      }
+      if (isDismissed) {
+        parts.push({
+          icon: 'mdi:archive-arrow-down-outline',
+          text: item.dismiss_reason || 'dismissed',
+        });
       }
       if (parts.length) {
         const debugRow = mk('div', 'debug-row');
@@ -678,7 +696,9 @@ class NotifyDashboardCard extends HTMLElement {
     // persistent only blocks manual dismiss for notifications — a live
     // activity stays dismissable via the close button regardless (matches
     // store.py's is_persistent(), which bakes in the same exception).
-    if (!persistent || item._kind === 'live_activities') {
+    // Already-dismissed (debug.dismissed view) never gets one either — the
+    // backend would just reject dismissing something already inactive.
+    if (!isDismissed && (!persistent || item._kind === 'live_activities')) {
       // Same primitive (icon-wrap) as the main icon instead of ha-icon-button,
       // so the box (and thus the hover background) is exactly 38x38 — matching
       // the main icon, and at the same height since both are plain flex
@@ -813,13 +833,17 @@ class NotifyDashboardCard extends HTMLElement {
     // `items` holds both kinds together, told apart by data.live_update
     // (same field the companion app itself uses — no separate kind label
     // on the sensor) and both active + recently-dismissed entries
-    // (dismissed_at set) — the card only ever shows active ones. One pass
-    // over the raw list — skip dismissed, filter, and bucket by kind all
-    // at once — instead of filtering the same list twice (once per kind).
+    // (dismissed_at set) — normally the card only shows active ones, unless
+    // the YAML-only debug.dismissed flag asks to see recently-dismissed
+    // ones too (see _renderRow for how those are visually distinguished).
+    // One pass over the raw list — skip dismissed, filter, and bucket by
+    // kind all at once — instead of filtering the same list twice (once
+    // per kind).
+    const showDismissed = !!this._config.debug?.dismissed;
     const live = [];
     const notif = [];
     for (const item of attrs.items || []) {
-      if (item.dismissed_at) continue;
+      if (item.dismissed_at && !showDismissed) continue;
       const kind = item.data?.live_update ? 'live_activities' : 'notifications';
       if (!content.includes(kind)) continue;
       if (!matchesFilter(item, filterTags, filterGroups, excludeTags, excludeGroups)) continue;
