@@ -84,8 +84,8 @@ A payload with `live_update: true` is tracked as a live activity instead of a re
 |---|---|---|
 | `tag` | Any | Sending the same `tag` again replaces it in place; `clear_notification` + `tag` removes it. |
 | `group` | Any | Free-form label for grouping/filtering (`filter_groups`) — not currently used for visual clustering, items aren't sorted by it. |
-| `persistent: true` | Any | Excluded from `dismiss_all`; can't be dismissed from the card or the `dismiss` service. |
-| `timeout` | Notification only | Seconds until auto-removal. Without it, a notification is only capped by the 30-day/100-item retention limit — live activities never use `timeout`; they expire 8h after their last update instead. |
+| `persistent: true` | Any | Excluded from `dismiss_all`; can't be dismissed from the card or the `dismiss` service — except on a live activity, which stays dismissable regardless. |
+| `timeout` | Notification only | Seconds until auto-dismissal. Without it, a notification is only capped by the 30-day retention limit — live activities never use `timeout`; they expire 8h after their last update instead. Up to the 50 most recent items (across both kinds, dismissed or not) are kept; beyond that, already-dismissed ones are dropped first. |
 | `notification_icon` / `notification_icon_color` | Any | Icon override and its background wash color. |
 | `color` | Any | Accent background wash for the whole row. |
 | `url` / `clickAction` | Any | Makes the row tappable and shows an explicit Open button. |
@@ -112,8 +112,8 @@ data:
 
 | Service | Fields | Does |
 |---|---|---|
-| `notify_dashboard.dismiss` | `id` (required) | Removes a notification or live activity (uuid, or `tag` for a live activity). |
-| `notify_dashboard.dismiss_all` | — | Removes all non-`persistent` notifications. |
+| `notify_dashboard.dismiss` | `id` (required) | Dismisses a notification or live activity (uuid, or `tag` for a live activity) — stays visible in history until it ages out. |
+| `notify_dashboard.dismiss_all` | — | Dismisses all non-`persistent` notifications. |
 | `notify_dashboard.fire_action` | `action`, `tag`, `action_data` | Fires a `mobile_app_notification_action` event — used internally for action-button taps. |
 
 ---
@@ -132,4 +132,4 @@ data:
 2. Remove the integration via Settings → Devices & Services → Notify Dashboard → delete.
 3. Remove `custom_components/notify_dashboard` (or the HACS repository).
 
-Stored data lives in `.storage/notify_dashboard.notifications` — delete that file manually if you also want to wipe saved notifications/live activities.
+Stored data lives in `.storage/notify_dashboard.notifications` — delete that file manually if you also want to wipe saved notifications/live activities/history.
