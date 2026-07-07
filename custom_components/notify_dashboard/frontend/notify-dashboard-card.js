@@ -17,7 +17,7 @@
 // status bar chip slot with chronometer, which wins when both are set,
 // same as the companion app). progress_indeterminate is picked up too.
 
-const CARD_VERSION = '1.1.2';
+const CARD_VERSION = '1.1.3';
 
 const CARD_DEFAULTS = {
   layout: 'single', // or: split
@@ -456,6 +456,23 @@ class NotifyDashboardCard extends HTMLElement {
     this._rows = new Map();
     this._rowContainer = null;
     this._containerKind = null;
+    // Lovelace can create this element and assign `.hass` before our own
+    // module has finished loading/registering the class (the resource is
+    // fetched as an ES module, which loads asynchronously) — that first
+    // assignment lands as a plain own-property on the not-yet-upgraded
+    // element, which then permanently shadows the `set hass()` accessor
+    // below once upgrade completes. Every *later* `.hass = ...` from
+    // Lovelace becomes a silent plain property write that never reaches
+    // the setter again, so the card renders once (whatever hass happened
+    // to be at upgrade time) and then never reactively updates — exactly
+    // "looks right after a refresh, never updates live" symptom. Standard
+    // fix: if that own property exists already, capture it, delete it, and
+    // re-assign so it actually goes through the setter this one time.
+    if (Object.prototype.hasOwnProperty.call(this, 'hass')) {
+      const preUpgradeHass = this.hass;
+      delete this.hass;
+      this.hass = preUpgradeHass;
+    }
   }
 
   disconnectedCallback() {
@@ -1002,6 +1019,13 @@ class NotifyDashboardCardEditor extends HTMLElement {
     this._built = false;
     this._ownFire = false;
     this._tab = 'content';
+    // Same defensive fix as NotifyDashboardCard's constructor — see its
+    // comment for why this is needed.
+    if (Object.prototype.hasOwnProperty.call(this, 'hass')) {
+      const preUpgradeHass = this.hass;
+      delete this.hass;
+      this.hass = preUpgradeHass;
+    }
   }
 
   set hass(hass) {
