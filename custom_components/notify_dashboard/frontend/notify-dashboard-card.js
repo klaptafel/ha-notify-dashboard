@@ -17,7 +17,7 @@
 // status bar chip slot with chronometer, which wins when both are set,
 // same as the companion app). progress_indeterminate is picked up too.
 
-const CARD_VERSION = '1.1.3';
+const CARD_VERSION = '1.1.4-debug';
 
 const CARD_DEFAULTS = {
   layout: 'single', // or: split
@@ -479,6 +479,9 @@ class NotifyDashboardCard extends HTMLElement {
     // Without cleanup, cached rows (and their chronometer intervals) would
     // keep living forever after the card leaves the DOM, e.g. on a view
     // switch.
+    // TEMPORARY diagnostic logging — remove once the refresh-required bug
+    // is actually located.
+    console.debug('[notify-dashboard-card DEBUG] disconnectedCallback');
     this._teardownRows();
   }
 
@@ -491,6 +494,12 @@ class NotifyDashboardCard extends HTMLElement {
     // anything needs rebuilding, leaving the card an empty shell until a
     // full page refresh recreates it. Force a fresh render on every
     // (re)connect instead of relying on that guard alone.
+    // TEMPORARY diagnostic logging — remove once the refresh-required bug
+    // is actually located.
+    console.debug('[notify-dashboard-card DEBUG] connectedCallback', {
+      hasHass: !!this._hass,
+      hasConfig: !!this._config,
+    });
     if (this._hass && this._config) this._render();
   }
 
@@ -523,6 +532,17 @@ class NotifyDashboardCard extends HTMLElement {
     if (!this._config) return;
     const state = hass.states[this._entity];
     const ts = state?.last_updated ?? null;
+    // TEMPORARY diagnostic logging — remove once the refresh-required bug
+    // is actually located. Prefixed so it's easy to filter/find and strip.
+    console.debug('[notify-dashboard-card DEBUG] set hass() called', {
+      entity: this._entity,
+      stateFound: !!state,
+      ts,
+      lastUpdated: this._lastUpdated,
+      changed: ts !== this._lastUpdated,
+      built: this._built,
+      itemCount: state?.attributes?.items?.length,
+    });
     if (ts !== this._lastUpdated || !this._built) {
       this._lastUpdated = ts;
       this._render();
@@ -933,6 +953,13 @@ class NotifyDashboardCard extends HTMLElement {
     if (!this._hass || !this._config) return;
     const items = this._collectItems();
     this._built = true;
+    // TEMPORARY diagnostic logging — remove once the refresh-required bug
+    // is actually located.
+    console.debug('[notify-dashboard-card DEBUG] _render() ran', {
+      collectedCount: items.length,
+      ids: items.map((i) => i.id),
+      rowsInMap: this._rows.size,
+    });
 
     if (!items.length && this._config.hide_when_empty) {
       this.classList.add('hidden');
