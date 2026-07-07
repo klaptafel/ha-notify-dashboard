@@ -7,6 +7,8 @@ changes — no polling.
 """
 from __future__ import annotations
 
+import copy
+
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -51,5 +53,15 @@ class NotifyDashboardSensor(SensorEntity):
         # count, not the historical total (dismissed entries stick around
         # in `items` for a while, but shouldn't inflate the headline number).
         self._attr_native_value = sum(1 for item in items if is_active(item))
-        self._attr_extra_state_attributes = {"items": items}
+        # deepcopy, not a live reference: store.py mutates entries in place
+        # (dismissed_at, insert/remove on the same list) rather than
+        # replacing them. HA's state machine only pushes a state_changed
+        # event to the frontend when `old_state.attributes == new_attributes`
+        # is False (see core.py's async_set_internal) — if we handed it the
+        # live store list, that "old" snapshot would drift in sync with
+        # every later mutation (same object), making the comparison always
+        # come back equal and silently suppressing the update whenever the
+        # active count itself didn't also change. A fresh copy each time
+        # keeps the previous snapshot frozen, so the comparison is real.
+        self._attr_extra_state_attributes = {"items": copy.deepcopy(items)}
         self.async_write_ha_state()
