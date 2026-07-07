@@ -17,7 +17,7 @@
 // status bar chip slot with chronometer, which wins when both are set,
 // same as the companion app). progress_indeterminate is picked up too.
 
-const CARD_VERSION = '1.1.4-debug';
+const CARD_VERSION = '1.1.5-debug';
 
 const CARD_DEFAULTS = {
   layout: 'single', // or: split
@@ -532,18 +532,42 @@ class NotifyDashboardCard extends HTMLElement {
     if (!this._config) return;
     const state = hass.states[this._entity];
     const ts = state?.last_updated ?? null;
+    const changed = ts !== this._lastUpdated;
     // TEMPORARY diagnostic logging — remove once the refresh-required bug
-    // is actually located. Prefixed so it's easy to filter/find and strip.
-    console.debug('[notify-dashboard-card DEBUG] set hass() called', {
-      entity: this._entity,
-      stateFound: !!state,
-      ts,
-      lastUpdated: this._lastUpdated,
-      changed: ts !== this._lastUpdated,
-      built: this._built,
-      itemCount: state?.attributes?.items?.length,
-    });
-    if (ts !== this._lastUpdated || !this._built) {
+    // is actually located. Only logs when something is actually different
+    // (a real ts change, the very first call, or — separately — the raw
+    // item list looking different even though ts did NOT change, which
+    // would point at last_updated itself lagging behind real content
+    // changes) — set hass() otherwise fires very often for entities that
+    // have nothing to do with us, and logging every single one of those
+    // buries the signal in noise. A periodic heartbeat (every 25th no-op
+    // call) confirms this is still firing at all without spamming.
+    const itemsFingerprint = JSON.stringify(
+      (state?.attributes?.items || []).map((i) => [i.id, i.dismissed_at, i.updated_at])
+    );
+    const fingerprintChanged = itemsFingerprint !== this._lastItemsFingerprint;
+    this._noopHassCalls = changed ? 0 : (this._noopHassCalls || 0) + 1;
+    if (changed || !this._built) {
+      console.debug('[notify-dashboard-card DEBUG] set hass(): CHANGE DETECTED (ts differs)', {
+        entity: this._entity,
+        stateFound: !!state,
+        ts,
+        previousLastUpdated: this._lastUpdated,
+        itemCount: state?.attributes?.items?.length,
+      });
+    } else if (fingerprintChanged) {
+      console.debug(
+        '[notify-dashboard-card DEBUG] *** ts UNCHANGED but item content DID change *** — this would mean last_updated is lagging behind real data',
+        { ts, itemCount: state?.attributes?.items?.length }
+      );
+    } else if (this._noopHassCalls % 25 === 1) {
+      console.debug(
+        `[notify-dashboard-card DEBUG] set hass(): still getting called (${this._noopHassCalls} no-op calls so far), ts unchanged at`,
+        ts
+      );
+    }
+    this._lastItemsFingerprint = itemsFingerprint;
+    if (changed || !this._built) {
       this._lastUpdated = ts;
       this._render();
     }
