@@ -81,14 +81,17 @@ class NotificationNotDismissableError(Exception):
     """
 
 
-def is_persistent(entry: Entry) -> bool:
-    return bool(entry["data"].get("persistent"))
-
-
 def is_live_update(entry: Entry) -> bool:
     """Same field the companion app itself uses to mark a live activity —
     no separate "kind" concept invented on top of it."""
     return bool(entry["data"].get("live_update"))
+
+
+def is_persistent(entry: Entry) -> bool:
+    """persistent only blocks manual dismiss for notifications — a live
+    activity stays dismissable via the close button regardless, so that
+    exception lives here rather than being re-derived at each call site."""
+    return not is_live_update(entry) and bool(entry["data"].get("persistent"))
 
 
 def is_active(entry: Entry) -> bool:
@@ -223,18 +226,21 @@ class NotifyDashboardStore:
         if overflow <= 0:
             return [], False
 
-        # items is newest-first; reversed makes "oldest first" natural.
-        oldest_first = list(reversed(items))
-        dismissed = [e for e in oldest_first if not is_active(e)]
-        active = [e for e in oldest_first if is_active(e)]
+        # items is newest-first, so within each bucket built by iterating it
+        # in order, the tail is already "oldest of that kind" — no separate
+        # reverse pass needed.
+        dismissed: list[Entry] = []
+        active: list[Entry] = []
+        for entry in items:
+            (dismissed if not is_active(entry) else active).append(entry)
 
-        to_evict = dismissed[:overflow]
+        to_evict = dismissed[-overflow:]
         still_needed = overflow - len(to_evict)
         if still_needed > 0:
-            to_evict += active[:still_needed]
+            to_evict += active[-still_needed:]
 
-        evicted_tags = [tag for e in to_evict if is_active(e) and (tag := e.get("tag"))]
         evict_ids = {e["id"] for e in to_evict}
+        evicted_tags = [tag for e in to_evict if is_active(e) and (tag := e.get("tag"))]
         self._data["items"] = [e for e in items if e["id"] not in evict_ids]
         return evicted_tags, bool(to_evict)
 
@@ -335,7 +341,7 @@ class NotifyDashboardStore:
         )
         if match is None:
             raise NotificationNotFoundError(item_id)
-        if is_persistent(match) and not is_live_update(match):
+        if is_persistent(match):
             raise NotificationNotDismissableError(item_id)
 
         match["dismissed_at"] = time.time()

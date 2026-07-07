@@ -11,13 +11,13 @@ default.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from . import get_domain_data
-from .store import is_active, is_live_update, is_persistent
+from .store import Entry, is_active, is_live_update, is_persistent
 
 
 async def async_get_config_entry_diagnostics(
@@ -27,10 +27,19 @@ async def async_get_config_entry_diagnostics(
     domain_data = get_domain_data(hass)
     items = domain_data["store"].data["items"]
 
-    active = [i for i in items if is_active(i)]
-    notifications = [i for i in active if not is_live_update(i)]
-    live_activities = [i for i in active if is_live_update(i)]
-    dismissed = [i for i in items if not is_active(i)]
+    # Single pass — these three buckets are mutually exclusive by
+    # construction (is_active x is_live_update), so no need to filter the
+    # same list three separate times.
+    notifications: list[Entry] = []
+    live_activities: list[Entry] = []
+    dismissed: list[Entry] = []
+    for item in items:
+        if not is_active(item):
+            dismissed.append(item)
+        elif is_live_update(item):
+            live_activities.append(item)
+        else:
+            notifications.append(item)
 
     return {
         "config": {
@@ -57,9 +66,11 @@ async def async_get_config_entry_diagnostics(
         },
         "dismissed": {
             "count": len(dismissed),
+            # dismissed only ever holds entries where is_active() is False,
+            # i.e. dismissed_at is guaranteed set — the cast just tells the
+            # type checker what's already true at runtime, not a real check.
             "newest_dismissed_at": max(
-                (d["dismissed_at"] for d in dismissed if d["dismissed_at"] is not None),
-                default=None,
+                (cast(float, d["dismissed_at"]) for d in dismissed), default=None
             ),
         },
     }

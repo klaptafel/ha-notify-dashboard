@@ -675,7 +675,10 @@ class NotifyDashboardCard extends HTMLElement {
     main.appendChild(iconWrap);
     main.appendChild(content);
 
-    if (!persistent) {
+    // persistent only blocks manual dismiss for notifications — a live
+    // activity stays dismissable via the close button regardless (matches
+    // store.py's is_persistent(), which bakes in the same exception).
+    if (!persistent || item._kind === 'live_activities') {
       // Same primitive (icon-wrap) as the main icon instead of ha-icon-button,
       // so the box (and thus the hover background) is exactly 38x38 — matching
       // the main icon, and at the same height since both are plain flex
@@ -810,21 +813,22 @@ class NotifyDashboardCard extends HTMLElement {
     // `items` holds both kinds together, told apart by data.live_update
     // (same field the companion app itself uses — no separate kind label
     // on the sensor) and both active + recently-dismissed entries
-    // (dismissed_at set) — the card only ever shows active ones.
-    const active = (attrs.items || []).filter((item) => !item.dismissed_at);
-
-    const collect = (kind, key) => {
-      if (!content.includes(key)) return [];
-      const isLive = kind === 'live_activities';
-      const arr = active
-        .filter((item) => !!item.data?.live_update === isLive)
-        .filter((item) => matchesFilter(item, filterTags, filterGroups, excludeTags, excludeGroups))
-        .map((item) => ({ ...item, _kind: kind }));
-      return sortPerKind ? arr.sort(byNewest) : arr;
-    };
-
-    const live = collect('live_activities', 'live_activities');
-    const notif = collect('notifications', 'notifications');
+    // (dismissed_at set) — the card only ever shows active ones. One pass
+    // over the raw list — skip dismissed, filter, and bucket by kind all
+    // at once — instead of filtering the same list twice (once per kind).
+    const live = [];
+    const notif = [];
+    for (const item of attrs.items || []) {
+      if (item.dismissed_at) continue;
+      const kind = item.data?.live_update ? 'live_activities' : 'notifications';
+      if (!content.includes(kind)) continue;
+      if (!matchesFilter(item, filterTags, filterGroups, excludeTags, excludeGroups)) continue;
+      (kind === 'live_activities' ? live : notif).push({ ...item, _kind: kind });
+    }
+    if (sortPerKind) {
+      live.sort(byNewest);
+      notif.sort(byNewest);
+    }
 
     let items;
     if (groupOrder === 'chronological') {
