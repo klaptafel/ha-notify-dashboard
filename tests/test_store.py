@@ -360,6 +360,26 @@ async def test_cleanup_expires_by_per_item_timeout(loaded_store):
     assert loaded_store.data["items"][0]["dismiss_reason"] == DISMISS_REASON_TIMEOUT
 
 
+async def test_cleanup_handles_string_timeout_from_templated_automation(loaded_store):
+    """timeout sometimes arrives as a string (e.g. an automation template
+    that didn't cast it) — must not crash _cleanup's created_at + timeout
+    math; a numeric string is honored as a real timeout."""
+    await loaded_store.async_add_notification("T", "M", {"tag": "t1", "timeout": "100"})
+    entry = loaded_store.data["items"][0]
+    entry["created_at"] = time.time() - 200  # older than its own 100s timeout
+    loaded_store._cleanup()
+    assert not is_active(loaded_store.data["items"][0])
+    assert loaded_store.data["items"][0]["dismiss_reason"] == DISMISS_REASON_TIMEOUT
+
+
+async def test_cleanup_treats_unparseable_timeout_as_no_timeout(loaded_store):
+    await loaded_store.async_add_notification("T", "M", {"tag": "t1", "timeout": "not-a-number"})
+    entry = loaded_store.data["items"][0]
+    entry["created_at"] = time.time() - 200  # would expire a real 100s timeout, not MAX_AGE_DAYS
+    loaded_store._cleanup()
+    assert is_active(loaded_store.data["items"][0])
+
+
 async def test_cleanup_expires_by_max_age_days_when_no_timeout(loaded_store):
     await loaded_store.async_add_notification("T", "M", {"tag": "t1"})
     entry = loaded_store.data["items"][0]

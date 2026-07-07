@@ -94,7 +94,20 @@ def entry_group(entry: Entry) -> str | None:
 
 
 def entry_timeout(entry: Entry) -> float | None:
-    return entry["data"].get("timeout")
+    """timeout is raw companion-app/automation payload — usually a number,
+    but templated automations often send it as a string (e.g. "30"), which
+    would otherwise blow up the created_at + timeout math in _cleanup.
+    Coerce defensively; anything not a real number is treated as "no
+    timeout" (falls back to MAX_AGE_DAYS) rather than crashing."""
+    timeout = entry["data"].get("timeout")
+    if isinstance(timeout, (int, float)) and not isinstance(timeout, bool):
+        return float(timeout)
+    if isinstance(timeout, str):
+        try:
+            return float(timeout)
+        except ValueError:
+            return None
+    return None
 
 
 def is_live_update(entry: Entry) -> bool:
