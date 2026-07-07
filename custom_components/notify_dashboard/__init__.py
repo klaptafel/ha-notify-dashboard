@@ -14,6 +14,7 @@ regardless of which path comes first.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from pathlib import Path
 from typing import TypedDict, cast
@@ -28,7 +29,6 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv, discovery
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.loader import async_get_integration
 
 from .const import (
     ATTR_ACTION,
@@ -235,13 +235,24 @@ async def _async_ensure_core(hass: HomeAssistant, config: ConfigType) -> None:
     )
 
 
+def _frontend_content_hash(path: Path) -> str:
+    """A short hash of the card's own JS content, used as the cache buster
+    below instead of the integration version — content-derived means it's
+    physically impossible to ship a frontend change without the URL
+    changing too, unlike a version string someone has to remember to bump
+    for every edit (that discipline slipped at least once already, and
+    produced exactly the "still shows old behavior after updating" reports
+    this mechanism exists to prevent)."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+
+
 async def _async_register_lovelace_resource(hass: HomeAssistant) -> None:
     """Register the card as a real Lovelace resource (storage mode).
 
-    The URL includes a `?v=<integration-version>` cache buster: without it
-    the browser (or a service worker) keeps using the old JS after every
+    The URL includes a `?v=<content-hash>` cache buster: without it the
+    browser (or a service worker) keeps using the old JS after every
     update, as happened when a long-fixed bug still seemed to show "old"
-    behavior. On a version change, the existing resource gets updated
+    behavior. When the content changes, the existing resource gets updated
     instead of creating a duplicate.
 
     NOTE — there is an open core bug (home-assistant/core#165767, reported
@@ -253,9 +264,10 @@ async def _async_register_lovelace_resource(hass: HomeAssistant) -> None:
     itself), so the existing data is already in memory before we add
     anything.
     """
-    integration = await async_get_integration(hass, DOMAIN)
+    frontend_js_path = Path(__file__).parent / "frontend" / "notify-dashboard-card.js"
+    content_hash = await hass.async_add_executor_job(_frontend_content_hash, frontend_js_path)
     base_path = f"{FRONTEND_URL_BASE}/notify-dashboard-card.js"
-    url = f"{base_path}?v={integration.version}"
+    url = f"{base_path}?v={content_hash}"
 
     lovelace_data = hass.data.get("lovelace")
     if not lovelace_data or getattr(lovelace_data, "resource_mode", None) != "storage":

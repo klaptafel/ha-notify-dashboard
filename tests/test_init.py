@@ -6,6 +6,8 @@ test_services.py — this file is only about how everything gets wired up.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import voluptuous as vol
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
@@ -181,12 +183,17 @@ async def test_lovelace_storage_mode_updates_existing_item_on_version_change(
 async def test_lovelace_storage_mode_leaves_up_to_date_item_untouched(
     hass, hass_http, fake_lovelace_storage, no_discovery
 ):
-    from homeassistant.loader import async_get_integration
+    from custom_components.notify_dashboard import _frontend_content_hash
 
-    integration = await async_get_integration(hass, DOMAIN)
-    current_url = (
-        f"/notify_dashboard_frontend/notify-dashboard-card.js?v={integration.version}"
+    frontend_js_path = (
+        Path(__file__).parent.parent
+        / "custom_components"
+        / "notify_dashboard"
+        / "frontend"
+        / "notify-dashboard-card.js"
     )
+    content_hash = _frontend_content_hash(frontend_js_path)
+    current_url = f"/notify_dashboard_frontend/notify-dashboard-card.js?v={content_hash}"
     fake_lovelace_storage.resources.items.append(
         {"id": "existing", "res_type": "module", "url": current_url}
     )
