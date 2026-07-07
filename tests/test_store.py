@@ -10,8 +10,15 @@ from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.notify_dashboard.const import (
+    DISMISS_REASON_CAPACITY,
+    DISMISS_REASON_CLEAR_NOTIFICATION,
+    DISMISS_REASON_DISMISS,
+    DISMISS_REASON_DISMISS_ALL,
+    DISMISS_REASON_STALE,
+    DISMISS_REASON_TIMEOUT,
     LIVE_ACTIVITY_STALE_HOURS,
     MAX_AGE_DAYS,
+    MAX_DISMISSED,
     MAX_NOTIFICATIONS,
     STORAGE_KEY,
 )
@@ -26,7 +33,7 @@ from custom_components.notify_dashboard.store import (
 async def test_store_loads_empty(hass):
     store = NotifyDashboardStore(hass)
     await store.async_load()
-    assert store.data == {"notifications": [], "live_activities": {}}
+    assert store.data == {"notifications": [], "live_activities": {}, "dismissed": []}
     store._unsub_periodic_cleanup()
 
 
@@ -57,6 +64,8 @@ async def test_store_restores_persisted_data(hass, hass_storage):
     await store.async_load()
     assert len(store.data["notifications"]) == 1
     assert store.data["notifications"][0]["id"] == "abc"
+    # Migration: persisted data predating the dismissed key shouldn't crash.
+    assert store.data["dismissed"] == []
     store._unsub_periodic_cleanup()
 
 
@@ -88,6 +97,8 @@ async def test_load_runs_cleanup_immediately(hass, hass_storage):
     store = NotifyDashboardStore(hass)
     await store.async_load()
     assert store.data["notifications"] == []
+    assert store.data["dismissed"][0]["id"] == "old"
+    assert store.data["dismissed"][0]["reason"] == DISMISS_REASON_TIMEOUT
     store._unsub_periodic_cleanup()
 
 
@@ -384,6 +395,9 @@ async def test_on_expired_not_called_during_async_load_startup_cleanup(
     store = await loaded_store_factory(on_removed=on_expired)
     assert store.data["notifications"] == []
     on_expired.assert_not_awaited()
+    # Unlike mirror-forwarding, dismissed-history recording has no
+    # dependency on hass.data being ready — it's just local bookkeeping.
+    assert store.data["dismissed"][0]["id"] == "old"
 
 
 async def test_on_expired_called_from_periodic_timer(hass, loaded_store_factory):
@@ -396,3 +410,89 @@ async def test_on_expired_called_from_periodic_timer(hass, loaded_store_factory)
         async_fire_time_changed(hass, dt_util.utcnow())
         await hass.async_block_till_done()
         on_expired.assert_awaited_once_with(["t1"])
+
+
+# --- dismissed history — sensor-facing log of what left the store, when,
+# and why (kind/reason), capped at MAX_DISMISSED, newest-first ---
+
+
+async def test_dismiss_records_notification_dismissed_entry(loaded_store):
+    await loaded_store.async_add_notification("T", "M", {"tag": "t1", "group": "g1"})
+    item_id = loaded_store.data["notifications"][0]["id"]
+    await loaded_store.async_dismiss(item_id)
+    entry = loaded_store.data["dismissed"][0]
+    assert entry["id"] == item_id
+    assert entry["tag"] == "t1"
+    assert entry["group"] == "g1"
+    assert entry["title"] == "T"
+    assert entry["live_update"] is False
+    assert entry["reason"] == DISMISS_REASON_DISMISS
+    assert isinstance(entry["dismissed_at"], float)
+
+
+async def test_dismiss_records_live_activity_dismissed_entry(loaded_store):
+    # live_update: True set explicitly — same as a real payload would carry,
+    # since that's the actual field the dismissed entry reads it from.
+    await loaded_store.async_upsert_live_activity("T", "M", {"tag": "job1", "live_update": True})
+    await loaded_store.async_dismiss("job1")
+    entry = loaded_store.data["dismissed"][0]
+    assert entry["tag"] == "job1"
+    assert entry["live_update"] is True
+    assert entry["reason"] == DISMISS_REASON_DISMISS
+    assert entry["group"] is None
+
+
+async def test_dismiss_all_records_dismiss_all_reason(loaded_store):
+    await loaded_store.async_add_notification("T", "M", {"tag": "a"})
+    await loaded_store.async_add_notification("T", "M", {"tag": "b", "persistent": True})
+    await loaded_store.async_dismiss_all_notifications()
+    reasons = {e["tag"]: e["reason"] for e in loaded_store.data["dismissed"]}
+    # Only the actually-cleared one is recorded — the persistent one is kept.
+    assert reasons == {"a": DISMISS_REASON_DISMISS_ALL}
+
+
+async def test_clear_by_tag_records_clear_notification_reason(loaded_store):
+    await loaded_store.async_add_notification("T", "M", {"tag": "shared"})
+    await loaded_store.async_upsert_live_activity("T", "M", {"tag": "shared", "live_update": True})
+    await loaded_store.async_clear_by_tag("shared")
+    reasons = {(e["live_update"], e["reason"]) for e in loaded_store.data["dismissed"]}
+    assert reasons == {
+        (False, DISMISS_REASON_CLEAR_NOTIFICATION),
+        (True, DISMISS_REASON_CLEAR_NOTIFICATION),
+    }
+
+
+async def test_cleanup_timeout_expiry_records_timeout_reason(loaded_store):
+    await loaded_store.async_add_notification("T", "M", {"tag": "t1", "timeout": 100})
+    loaded_store.data["notifications"][0]["created_at"] = time.time() - 200
+    loaded_store._cleanup()
+    assert loaded_store.data["dismissed"][0]["reason"] == DISMISS_REASON_TIMEOUT
+
+
+async def test_cleanup_hard_cap_records_capacity_reason(loaded_store):
+    for i in range(MAX_NOTIFICATIONS + 1):
+        await loaded_store.async_add_notification(f"T{i}", f"M{i}", {"tag": f"t{i}"})
+    trimmed = [e for e in loaded_store.data["dismissed"] if e["reason"] == DISMISS_REASON_CAPACITY]
+    assert len(trimmed) == 1
+    assert trimmed[0]["tag"] == "t0"  # the oldest, trimmed by the hard cap
+
+
+async def test_cleanup_stale_live_activity_records_stale_reason(loaded_store):
+    await loaded_store.async_upsert_live_activity("T", "M", {"tag": "job1", "live_update": True})
+    loaded_store.data["live_activities"]["job1"]["updated_at"] = time.time() - (
+        LIVE_ACTIVITY_STALE_HOURS * 3600 + 10
+    )
+    loaded_store._cleanup()
+    entry = loaded_store.data["dismissed"][0]
+    assert entry["reason"] == DISMISS_REASON_STALE
+    assert entry["live_update"] is True
+
+
+async def test_dismissed_history_is_newest_first_and_capped(loaded_store):
+    for i in range(MAX_DISMISSED + 5):
+        await loaded_store.async_add_notification(f"T{i}", f"M{i}", {"tag": f"t{i}"})
+        await loaded_store.async_dismiss(loaded_store.data["notifications"][0]["id"])
+    dismissed = loaded_store.data["dismissed"]
+    assert len(dismissed) == MAX_DISMISSED
+    # Newest-first: the most recently dismissed (highest-numbered) is first.
+    assert dismissed[0]["tag"] == f"t{MAX_DISMISSED + 4}"

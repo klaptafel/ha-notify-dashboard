@@ -72,6 +72,18 @@ async def test_sensor_populates_state_on_add(hass, loaded_store):
     assert state.state == "1"
     assert len(state.attributes["notifications"]) == 1
     assert state.attributes["live_activities"] == []
+    assert state.attributes["dismissed"] == []
+
+
+async def test_sensor_exposes_dismissed_history(hass, loaded_store):
+    await loaded_store.async_add_notification("T", "M", {"tag": "t1"})
+    await loaded_store.async_dismiss(loaded_store.data["notifications"][0]["id"])
+    hass.data[DOMAIN] = {"store": loaded_store}
+
+    sensor = await _add_sensor(hass)
+    state = hass.states.get(sensor.entity_id)
+    assert len(state.attributes["dismissed"]) == 1
+    assert state.attributes["dismissed"][0]["tag"] == "t1"
 
 
 async def test_sensor_updates_reactively_via_dispatcher(hass, loaded_store):

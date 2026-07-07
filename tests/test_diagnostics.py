@@ -27,6 +27,7 @@ async def test_diagnostics_empty_store(hass, loaded_store):
         "oldest_updated_at": None,
         "newest_updated_at": None,
     }
+    assert result["dismissed"] == {"count": 0, "newest_dismissed_at": None}
 
 
 async def test_diagnostics_reports_aggregates_not_content(hass, loaded_store):
@@ -39,19 +40,22 @@ async def test_diagnostics_reports_aggregates_not_content(hass, loaded_store):
         "T2", "M2", {"tag": "b", "persistent": True}
     )
     await loaded_store.async_upsert_live_activity("T3", "M3", {"tag": "job1"})
+    await loaded_store.async_dismiss(loaded_store.data["notifications"][-1]["id"])
 
     result = await async_get_config_entry_diagnostics(
         hass, MockConfigEntry(domain=DOMAIN, options={})
     )
 
     assert result["config"]["mirror_dismiss_to"] == ["notify.mobile_app_pixel"]
-    assert result["notifications"]["count"] == 2
+    assert result["notifications"]["count"] == 1
     assert result["notifications"]["persistent_count"] == 1
     assert result["live_activities"]["count"] == 1
     assert result["notifications"]["oldest_created_at"] is not None
     assert result["notifications"]["newest_created_at"] is not None
     assert result["live_activities"]["oldest_updated_at"] is not None
     assert result["live_activities"]["newest_updated_at"] is not None
+    assert result["dismissed"]["count"] == 1
+    assert result["dismissed"]["newest_dismissed_at"] is not None
 
     # The whole point of this file: never leak actual content.
     serialized = str(result)

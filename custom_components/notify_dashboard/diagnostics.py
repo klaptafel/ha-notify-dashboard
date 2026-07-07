@@ -52,4 +52,10 @@ async def async_get_config_entry_diagnostics(
                 (a["updated_at"] for a in live_activities), default=None
             ),
         },
+        "dismissed": {
+            "count": len(store_data["dismissed"]),
+            "newest_dismissed_at": max(
+                (d["dismissed_at"] for d in store_data["dismissed"]), default=None
+            ),
+        },
     }

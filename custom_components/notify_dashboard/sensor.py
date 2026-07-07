@@ -1,8 +1,8 @@
 """Sensor that exposes the notify_dashboard data to the frontend card.
 
-The card reads this entity's attributes (notifications / live_activities).
-Updates reactively via a dispatcher signal as soon as the store changes —
-no polling.
+The card reads this entity's attributes (notifications / live_activities /
+dismissed). Updates reactively via a dispatcher signal as soon as the store
+changes — no polling.
 """
 from __future__ import annotations
 
@@ -52,5 +52,6 @@ class NotifyDashboardSensor(SensorEntity):
         self._attr_extra_state_attributes = {
             "notifications": notifications,
             "live_activities": live_activities,
+            "dismissed": data["dismissed"],
         }
         self.async_write_ha_state()

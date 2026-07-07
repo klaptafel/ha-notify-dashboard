@@ -47,6 +47,19 @@ STORAGE_KEY = f"{DOMAIN}.notifications"
 MAX_NOTIFICATIONS = 100
 MAX_AGE_DAYS = 30
 LIVE_ACTIVITY_STALE_HOURS = 8
+MAX_DISMISSED = 20
+
+# Dismissed-history entry reasons (store.py's DismissedEntry) — shared
+# constants so store.py/tests all use the same literal strings instead of
+# independently retyping them. No separate "kind" concept: whether a
+# dismissed entry was a live activity is just its own live_update flag,
+# read straight from the data it already carries.
+DISMISS_REASON_DISMISS = "dismiss"
+DISMISS_REASON_DISMISS_ALL = "dismiss_all"
+DISMISS_REASON_CLEAR_NOTIFICATION = "clear_notification"
+DISMISS_REASON_TIMEOUT = "timeout"
+DISMISS_REASON_CAPACITY = "capacity"
+DISMISS_REASON_STALE = "stale"
 
 # Command messages that must never be shown as content
 COMMAND_MESSAGES = {"clear_notification", "TTS", "delete_alert", "remove_channel"}
