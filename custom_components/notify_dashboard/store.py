@@ -142,8 +142,8 @@ class NotifyDashboardStore:
             return
 
         async def _periodic(_now: datetime) -> None:
-            expired_tags = self._cleanup()
-            if expired_tags:
+            expired_tags, anything_changed = self._cleanup()
+            if anything_changed:
                 await self._store.async_save(self._data)
                 async_dispatcher_send(self.hass, SIGNAL_UPDATE)
             await self._notify_removed(expired_tags)
@@ -151,7 +151,7 @@ class NotifyDashboardStore:
         self._unsub_periodic_cleanup = async_track_time_interval(self.hass, _periodic, CLEANUP_INTERVAL)
 
     async def _async_save(self) -> None:
-        expired_tags = self._cleanup()
+        expired_tags, _ = self._cleanup()
         await self._store.async_save(self._data)
         async_dispatcher_send(self.hass, SIGNAL_UPDATE)
         await self._notify_removed(expired_tags)
@@ -165,17 +165,24 @@ class NotifyDashboardStore:
             (e for e in self._data["items"] if e.get("tag") == tag and is_active(e)), None
         )
 
-    def _cleanup(self) -> list[str]:
+    def _cleanup(self) -> tuple[list[str], bool]:
         """Dismiss (in place) anything past its own expiry, then hard-purge
         down to MAX_ITEMS via _apply_cap.
 
-        Returns the tags of anything that stopped being active as a result
-        — see _on_removed.
+        Returns (changed_tags, anything_changed). changed_tags is only the
+        subset of touched entries that had a tag — the only thing
+        mirror_dismiss_to forwarding (tag-keyed) can act on. anything_changed
+        reflects every mutation regardless of tag: an *untagged* notification
+        timing out still needs a save + dispatcher signal, or it only ever
+        stops showing after something else happens to trigger an update
+        (confirmed: this was a real bug — the periodic timer used to gate
+        the save/dispatch on changed_tags being non-empty).
         """
         now = time.time()
         max_age = MAX_AGE_DAYS * 86400
         stale_after = LIVE_ACTIVITY_STALE_HOURS * 3600
         changed_tags: list[str] = []
+        anything_changed = False
 
         for entry in self._data["items"]:
             if not is_active(entry):
@@ -191,13 +198,15 @@ class NotifyDashboardStore:
             if expired:
                 entry["dismissed_at"] = now
                 entry["dismiss_reason"] = reason
+                anything_changed = True
                 if tag := entry.get("tag"):
                     changed_tags.append(tag)
 
-        changed_tags.extend(self._apply_cap())
-        return changed_tags
+        cap_tags, cap_changed = self._apply_cap()
+        changed_tags.extend(cap_tags)
+        return changed_tags, anything_changed or cap_changed
 
-    def _apply_cap(self) -> list[str]:
+    def _apply_cap(self) -> tuple[list[str], bool]:
         """Hard-purge down to MAX_ITEMS — the one and only place an entry
         actually leaves the list outright.
 
@@ -205,12 +214,14 @@ class NotifyDashboardStore:
         active ones — active items are the actually relevant state,
         dismissed ones are just a nice-to-have history. Active entries are
         only evicted once there aren't enough dismissed ones left to make
-        room. Returns the tags of any still-active entries evicted this way.
+        room. Returns (evicted_tags, anything_evicted) — evicted_tags is
+        only the still-active, tagged subset (for mirror_dismiss_to);
+        anything_evicted covers every eviction regardless of tag/state.
         """
         items = self._data["items"]
         overflow = len(items) - MAX_ITEMS
         if overflow <= 0:
-            return []
+            return [], False
 
         # items is newest-first; reversed makes "oldest first" natural.
         oldest_first = list(reversed(items))
@@ -225,7 +236,7 @@ class NotifyDashboardStore:
         evicted_tags = [tag for e in to_evict if is_active(e) and (tag := e.get("tag"))]
         evict_ids = {e["id"] for e in to_evict}
         self._data["items"] = [e for e in items if e["id"] not in evict_ids]
-        return evicted_tags
+        return evicted_tags, bool(to_evict)
 
     async def async_add_notification(
         self, title: str | None, message: str, data: dict[str, Any]

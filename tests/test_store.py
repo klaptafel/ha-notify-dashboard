@@ -6,6 +6,7 @@ from datetime import timedelta
 from unittest.mock import AsyncMock
 
 from freezegun import freeze_time
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
@@ -18,6 +19,7 @@ from custom_components.notify_dashboard.const import (
     LIVE_ACTIVITY_STALE_HOURS,
     MAX_AGE_DAYS,
     MAX_ITEMS,
+    SIGNAL_UPDATE,
     STORAGE_KEY,
 )
 from custom_components.notify_dashboard.store import (
@@ -407,6 +409,31 @@ async def test_periodic_cleanup_fires_and_saves(hass):
             assert not is_active(store.data["items"][0])
         finally:
             store._unsub_periodic_cleanup()
+
+
+async def test_periodic_cleanup_dispatches_for_untagged_expiry(hass):
+    """Regression test: the periodic timer used to gate its save/dispatch
+    on _cleanup()'s tag list being non-empty — an untagged notification
+    still gets dismissed in memory, but without a tag it was silently
+    dropped from that list, so the sensor never re-published and the card
+    only ever caught up on an unrelated page refresh."""
+    signals = []
+    unsub = async_dispatcher_connect(hass, SIGNAL_UPDATE, lambda: signals.append(1))
+    with freeze_time(dt_util.utcnow()) as freezer:
+        store = NotifyDashboardStore(hass)
+        await store.async_load()
+        try:
+            await store.async_add_notification("T", "M", {"timeout": 5})  # no tag
+            signals.clear()  # the add itself also dispatches — isolate the periodic tick
+            freezer.tick(timedelta(seconds=10))
+            freezer.tick(CLEANUP_INTERVAL)
+            async_fire_time_changed(hass, dt_util.utcnow())
+            await hass.async_block_till_done()
+            assert not is_active(store.data["items"][0])
+            assert signals, "periodic cleanup must dispatch SIGNAL_UPDATE even for an untagged expiry"
+        finally:
+            store._unsub_periodic_cleanup()
+            unsub()
 
 
 async def test_periodic_cleanup_noop_when_nothing_expired(hass):
