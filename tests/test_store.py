@@ -310,15 +310,17 @@ async def test_dismiss_unknown_id_raises(loaded_store):
         pass
 
 
-async def test_dismiss_already_dismissed_id_raises(loaded_store):
+async def test_dismiss_already_dismissed_id_is_idempotent_noop(loaded_store):
+    """A second dismiss of the same (already-inactive) id must not raise —
+    two independent callers can legitimately race to dismiss the same
+    item (e.g. the card's own fallback dismiss vs. an automation's own
+    dismiss for the same action button)."""
     await loaded_store.async_add_notification("T", "M", {"tag": "t1"})
     item_id = loaded_store.data["items"][0]["id"]
     await loaded_store.async_dismiss(item_id)
-    try:
-        await loaded_store.async_dismiss(item_id)
-        assert False, "expected NotificationNotFoundError"
-    except NotificationNotFoundError:
-        pass
+    result = await loaded_store.async_dismiss(item_id)
+    assert result is None
+    assert not is_active(loaded_store.data["items"][0])
 
 
 async def test_dismiss_live_activity_by_tag(loaded_store):

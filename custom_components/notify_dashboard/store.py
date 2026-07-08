@@ -37,7 +37,15 @@ from .const import (
     STORAGE_VERSION,
 )
 
-CLEANUP_INTERVAL = timedelta(seconds=15)
+# Worst-case lag between an item's real expiry and it actually being
+# dismissed server-side — visible now via the card's timeout ring (see
+# notify-dashboard-card.js), which reaches 100% at the *real* expiry
+# instant and then has to wait for this tick before the row actually
+# disappears. At 5s this was clearly noticeable on a short (e.g. 10s)
+# timeout — up to 50% extra wait past a full ring — so cut down further;
+# the check itself stays cheap regardless (one pass over a small
+# in-memory list) no matter how often it runs.
+CLEANUP_INTERVAL = timedelta(seconds=1)
 
 
 class Entry(TypedDict):
@@ -356,22 +364,34 @@ class NotifyDashboardStore:
         if entry is not None:
             await self._notify_removed([tag])
 
-    async def async_dismiss(self, item_id: str) -> Entry:
+    async def async_dismiss(self, item_id: str) -> Entry | None:
         """Dismiss a notification or a live activity, based on id.
 
         For notifications, id is a uuid; for live activities, id equals the
         tag. Persistent-marked notifications can't be dismissed
         (NotificationNotDismissableError) — live activities always can,
-        regardless of `persistent`. An unknown or already-inactive id
-        raises NotificationNotFoundError — the caller (the dismiss service)
+        regardless of `persistent`. An unknown id raises
+        NotificationNotFoundError — the caller (the dismiss service)
         translates that into a clear error message instead of silently
         doing nothing.
+
+        An id that exists but is already inactive is a harmless no-op
+        (returns None, no error) rather than NotificationNotFoundError —
+        dismiss has to be idempotent since more than one thing can
+        legitimately race to dismiss the same item, e.g. the card's own
+        action-button fallback dismiss (fired 600ms after tapping an
+        action, in case nothing else closes it) against an automation that
+        reacts to that same action and dismisses it itself, likely faster.
+        Treating the loser of that race as an error was a real, confirmed
+        bug — surfaced only once live sensor updates actually started
+        reaching the browser promptly, since before that fix neither side
+        of the race was ever fast enough for it to matter in practice.
         """
-        match = next(
-            (e for e in self._data["items"] if e["id"] == item_id and is_active(e)), None
-        )
+        match = next((e for e in self._data["items"] if e["id"] == item_id), None)
         if match is None:
             raise NotificationNotFoundError(item_id)
+        if not is_active(match):
+            return None
         if is_persistent(match):
             raise NotificationNotDismissableError(item_id)
 

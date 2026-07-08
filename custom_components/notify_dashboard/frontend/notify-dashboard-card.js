@@ -17,7 +17,13 @@
 // status bar chip slot with chronometer, which wins when both are set,
 // same as the companion app). progress_indeterminate is picked up too.
 
-const CARD_VERSION = '1.1.6';
+const CARD_VERSION = '1.1.7';
+
+// Minimum time an action button's spinner stays visible after a tap, even
+// if the item is already gone from the sensor by then (see the action
+// button's click handler and _syncRows).
+const MIN_ACTION_SPINNER_MS = 400;
+
 
 const CARD_DEFAULTS = {
   layout: 'single', // or: split
@@ -75,7 +81,7 @@ const CARD_CSS = `
   .row-main { display: flex; align-items: flex-start; gap: 14px; }
 
   .icon-wrap {
-    width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+    position: relative; width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
   }
   .icon-wrap.clickable { cursor: pointer; -webkit-tap-highlight-color: transparent; }
@@ -161,6 +167,29 @@ const CARD_CSS = `
     font-size: var(--ha-font-size-m, 14px); font-weight: var(--ha-font-weight-medium, 500);
     color: var(--primary-text-color); line-height: var(--ha-line-height-condensed, 1.3);
     overflow-wrap: break-word;
+  }
+  /* A radial "time remaining" indicator wrapped around the dismiss button
+     (or, for a persistent timed notification with no button, around the
+     plain timer icon) for a timed notification — see _renderRow's
+     buildRing(). Sits *behind* the icon (absolute, inset slightly beyond
+     the 38px circle) rather than inside it, so it reads as a ring around
+     the button rather than competing with the icon for the same space.
+     conic-gradient fills clockwise from --ring-percent (0% at created_at,
+     100% right when the backend actually dismisses it); the mask punches
+     out everything but a thin band at the edge, so it draws as a ring, not
+     a solid pie wedge. pointer-events: none so it never steals the click
+     from the button underneath. */
+  .timeout-ring {
+    /* inset: 0, not negative — stays exactly within the same 38px circle
+       as .row-dismiss's own hover fill, sitting right at its edge, rather
+       than poking out past it. */
+    position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+    background: conic-gradient(
+      color-mix(in srgb, var(--secondary-text-color) 55%, transparent) var(--ring-percent, 0%),
+      transparent 0
+    );
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1.5px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1.5px));
   }
 
   /* Reuses .icon-wrap for the exact box (38x38, round) — ha-icon-button
@@ -382,10 +411,22 @@ function mk(tag, cls, text) {
   return el;
 }
 
+// HA's color_rgb selector (commonly used for notification_icon_color/color
+// in notify scripts) hands back a plain [r, g, b] array, not a CSS color
+// string. Passed straight into a style property or template literal, an
+// array coerces via its own toString() into "r,g,b" (no rgb(...) wrapper)
+// — invalid CSS, silently dropped by the browser, so the icon/wash just
+// falls back to its default color instead of erroring visibly. Every other
+// source (hex, named colors, var(--x)) is already a valid CSS string and
+// passes through unchanged.
+function cssColor(value) {
+  return Array.isArray(value) ? `rgb(${value[0]}, ${value[1]}, ${value[2]})` : value;
+}
+
 function mkIcon(icon, color) {
   const ico = document.createElement('ha-icon');
   ico.setAttribute('icon', icon || 'mdi:bell-outline');
-  if (color) ico.style.color = color;
+  if (color) ico.style.color = cssColor(color);
   return ico;
 }
 
@@ -456,6 +497,13 @@ class NotifyDashboardCard extends HTMLElement {
     this._rows = new Map();
     this._rowContainer = null;
     this._containerKind = null;
+    // key ("_kind:id") -> timestamp until which _syncRows should keep
+    // showing that row even after it's dropped out of the sensor's active
+    // items — see the action-button click handler and _syncRows below.
+    // Deliberately narrow: only ever set for a row the user just tapped an
+    // action on, so the rest of the card stays exactly as reactive as
+    // fixed (no general "lag behind reality" reintroduced).
+    this._pendingRemoval = new Map();
     // Lovelace can create this element and assign `.hass` before our own
     // module has finished loading/registering the class (the resource is
     // fetched as an ES module, which loads asynchronously) — that first
@@ -502,9 +550,11 @@ class NotifyDashboardCard extends HTMLElement {
     // become a silent duplicate.
     for (const entry of this._rows.values()) {
       entry.intervalIds.forEach((id) => clearInterval(id));
+      if (entry.holdTimeout) clearTimeout(entry.holdTimeout);
       entry.el.remove();
     }
     this._rows.clear();
+    this._pendingRemoval.clear();
   }
 
   setConfig(config) {
@@ -573,13 +623,22 @@ class NotifyDashboardCard extends HTMLElement {
     const m = Math.floor((abs % 3600) / 60);
     const s = abs % 60;
     const pad = (n) => String(n).padStart(2, '0');
-    return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+    // Only the leading (most-significant) unit goes unpadded, like a plain
+    // duration — "9:42", "1:00:05" — every unit *after* it stays zero-
+    // padded, since a bare "1:5" for 1 minute 5 seconds would be genuinely
+    // ambiguous/hard to read, not just cosmetically redundant.
+    if (h > 0) return `${h}:${pad(m)}:${pad(s)}`;
+    if (m > 0) return `${m}:${pad(s)}`;
+    return `${s}`;
   }
 
   _renderRow(item, intervalIds) {
     const data = item.data || {};
     const icon = data.notification_icon || this._config.default_icon;
-    const color = data.notification_icon_color || this._config.default_icon_color;
+    // Normalized once here — every downstream use (icon-wrap background,
+    // mkIcon, progress-bar fill) then gets a valid CSS color regardless of
+    // whether it came from a color_rgb selector ([r,g,b]) or a plain string.
+    const color = cssColor(data.notification_icon_color || this._config.default_icon_color);
     const url = data.url || data.clickAction || null;
     const persistent = !!data.persistent;
     const actions = Array.isArray(data.actions) ? data.actions : [];
@@ -592,7 +651,7 @@ class NotifyDashboardCard extends HTMLElement {
     const row = mk('div', 'row' + (isDismissed ? ' row-ghost' : ''));
     // Low-opacity wash, not a solid fill — see the .row CSS comment on why
     // an arbitrary user-supplied color stays off of text/large surfaces.
-    if (data.color) row.style.background = `color-mix(in srgb, ${data.color} 12%, transparent)`;
+    if (data.color) row.style.background = `color-mix(in srgb, ${cssColor(data.color)} 12%, transparent)`;
     const main = mk('div', 'row-main');
 
     const iconWrap = mk('div', 'icon-wrap' + (url ? ' clickable' : ''));
@@ -611,6 +670,17 @@ class NotifyDashboardCard extends HTMLElement {
     // critical_text is replaced by the timer once chronometer is set, same
     // as the companion app's own status-bar-chip behavior — never both.
     const hasCriticalText = item._kind === 'live_activities' && !hasChronometer && !!data.critical_text;
+    // Countdown to auto-dismiss for a regular, timed notification — live
+    // activities expire on their own 8h staleness check instead (see
+    // store.py's _cleanup), so data.timeout has no meaning there. Only
+    // shown while still active — a debug.dismissed ghost row already has
+    // its own dismiss-reason chip, a countdown to nothing would be noise.
+    const timeoutSeconds = Number(data.timeout);
+    const hasTimeoutCountdown =
+      item._kind === 'notifications' &&
+      !isDismissed &&
+      Number.isFinite(timeoutSeconds) &&
+      timeoutSeconds > 0;
     const titleText = item.title || item.message || null;
     // The chronometer takes the message's spot entirely (same as iOS) —
     // if there's no separate message to replace (message already became
@@ -711,6 +781,30 @@ class NotifyDashboardCard extends HTMLElement {
     main.appendChild(iconWrap);
     main.appendChild(content);
 
+    // Radial "time remaining" ring, built once and appended into whichever
+    // box below ends up hosting it — a plain background element behind the
+    // icon (see .timeout-ring's CSS), not a replacement for it, so the
+    // button keeps reading as "close" the whole time instead of swapping
+    // between an icon and a timer.
+    const buildRing = () => {
+      const ring = mk('div', 'timeout-ring');
+      // created_at (not updated_at) — matches store.py's own
+      // created_at + timeout expiry math exactly, so the ring reads 100%
+      // at the *real* expiry instant, not some padded stand-in for it.
+      // With CLEANUP_INTERVAL down to 1s, the worst-case "ring's full but
+      // the row's still here" window is small enough not to be worth
+      // trading away that exactness for.
+      const target = item.created_at + timeoutSeconds;
+      const update = () => {
+        const remaining = Math.max(0, target - Date.now() / 1000);
+        const pct = timeoutSeconds > 0 ? (1 - remaining / timeoutSeconds) * 100 : 100;
+        ring.style.setProperty('--ring-percent', `${Math.min(100, Math.max(0, pct))}%`);
+      };
+      update();
+      intervalIds.push(setInterval(update, 1000));
+      return ring;
+    };
+
     // persistent only blocks manual dismiss for notifications — a live
     // activity stays dismissable via the close button regardless (matches
     // store.py's is_persistent(), which bakes in the same exception).
@@ -725,6 +819,10 @@ class NotifyDashboardCard extends HTMLElement {
       closeBtn.setAttribute('role', 'button');
       closeBtn.tabIndex = 0;
       closeBtn.setAttribute('aria-label', this._uiTr().dismiss);
+      // Ring appended first so it paints *behind* the icon in normal flow
+      // (no z-index needed) — both share the same 38px circle, the ring
+      // just extends slightly past its edge (see .timeout-ring's inset).
+      if (hasTimeoutCountdown) closeBtn.appendChild(buildRing());
       closeBtn.appendChild(mkIcon('mdi:close', 'var(--secondary-text-color)'));
       const onDismiss = () => this._dismiss(item.id);
       closeBtn.addEventListener('click', onDismiss);
@@ -735,6 +833,18 @@ class NotifyDashboardCard extends HTMLElement {
         }
       });
       main.appendChild(closeBtn);
+    } else if (hasTimeoutCountdown) {
+      // persistent notification with a timeout: no manual close button (see
+      // above), but store.py's own auto-expiry doesn't check `persistent`
+      // either — it'll still get dismissed on its own, so the ring
+      // shouldn't just silently disappear here. Same 38px box, not
+      // clickable/focusable this time — there's nothing to dismiss early.
+      // A plain timer icon fills the ring's center, since there's no
+      // dismiss-X appropriate for a non-interactive box.
+      const box = mk('div', 'icon-wrap');
+      box.appendChild(buildRing());
+      box.appendChild(mkIcon('mdi:timer-outline', 'var(--secondary-text-color)'));
+      main.appendChild(box);
     }
 
     row.appendChild(main);
@@ -801,6 +911,14 @@ class NotifyDashboardCard extends HTMLElement {
           clicked = true;
           btn.textContent = '';
           btn.appendChild(mk('div', 'action-spinner'));
+          // Hold this specific row on screen for a bit even if it drops out
+          // of the sensor's active items before that — e.g. an automation
+          // reacting to this same action, dismissing it faster than this
+          // card's own 600ms fallback below. Purely a visible "your tap
+          // registered" confirmation, not a wait for anything real, so a
+          // short, fixed hold (not tied to whatever finishes it) is exactly
+          // the point — see _syncRows for the other half of this.
+          this._pendingRemoval.set(`${item._kind}:${item.id}`, Date.now() + MIN_ACTION_SPINNER_MS);
           this._handleAction(a.action, item, a.action_data);
           // Small delay to confirm the tap was processed, then dismiss —
           // doesn't apply to the Open button (which only navigates).
@@ -898,12 +1016,16 @@ class NotifyDashboardCard extends HTMLElement {
     for (const item of items) {
       const key = `${item._kind}:${item.id}`;
       seen.add(key);
+      // Still genuinely active — any hold from an earlier action-button tap
+      // is moot now.
+      this._pendingRemoval.delete(key);
       const updatedAt = item.updated_at || item.created_at || 0;
       let entry = this._rows.get(key);
 
       if (!entry || entry.updatedAt !== updatedAt) {
         if (entry) {
           entry.intervalIds.forEach((id) => clearInterval(id));
+          if (entry.holdTimeout) clearTimeout(entry.holdTimeout);
           entry.el.remove(); // otherwise the old node stays behind as a stale duplicate
         }
         const intervalIds = [];
@@ -921,9 +1043,40 @@ class NotifyDashboardCard extends HTMLElement {
       prevEl = entry.el;
     }
 
+    const now = Date.now();
+    // TEMPORARY diagnostic logging — remove once the "never disappears"
+    // bug is located. seenKeys vs rowKeys shows exactly which rows
+    // _syncRows *thinks* should stay vs what's actually cached, so we can
+    // tell apart "the item's still in the collected list" (a filtering
+    // bug) from "it's gone from the list but the row wasn't removed" (a
+    // DOM-sync bug here).
+    console.debug(
+      '[ND DEBUG] _syncRows cleanup pass. seenKeys=' +
+        JSON.stringify([...seen]) +
+        ' rowKeys=' +
+        JSON.stringify([...this._rows.keys()]) +
+        ' pendingRemoval=' +
+        JSON.stringify([...this._pendingRemoval.entries()])
+    );
     for (const [key, entry] of this._rows) {
       if (!seen.has(key)) {
+        const holdUntil = this._pendingRemoval.get(key);
+        if (holdUntil && now < holdUntil) {
+          console.debug('[ND DEBUG] holding row ' + key + ' for ' + (holdUntil - now) + 'ms more');
+          // Just tapped, gone from the sensor already, but still inside its
+          // minimum-visible window — leave the row (spinner and all)
+          // exactly as it was, and come back once the hold expires to
+          // finish removing it (nothing else guarantees another render
+          // will happen by then).
+          if (!entry.holdTimeout) {
+            entry.holdTimeout = setTimeout(() => this._render(), holdUntil - now);
+          }
+          continue;
+        }
+        console.debug('[ND DEBUG] removing row ' + key + ' from DOM+._rows');
+        this._pendingRemoval.delete(key);
         entry.intervalIds.forEach((id) => clearInterval(id));
+        if (entry.holdTimeout) clearTimeout(entry.holdTimeout);
         entry.el.remove();
         this._rows.delete(key);
       }
@@ -934,8 +1087,36 @@ class NotifyDashboardCard extends HTMLElement {
     if (!this._hass || !this._config) return;
     const items = this._collectItems();
     this._built = true;
+    // TEMPORARY diagnostic logging — remove once the "never disappears"
+    // bug is located.
+    const rawItems = this._hass.states[this._entity]?.attributes?.items || [];
+    console.debug(
+      '[ND DEBUG] _render(). collectedCount=' +
+        items.length +
+        ' raw=' +
+        JSON.stringify(rawItems.map((i) => ({ id: i.id, dismissed_at: i.dismissed_at })))
+    );
 
-    if (!items.length && this._config.hide_when_empty) {
+    // A row can be mid-hold (see _pendingRemoval / _syncRows' click-driven
+    // "keep this one on screen a bit longer" logic) even though `items` no
+    // longer includes it. The empty/hide_when_empty shortcuts below call
+    // _teardownRows() unconditionally, which would nuke a held row before
+    // its hold ever gets to matter — skip straight to the normal
+    // container+_syncRows path instead whenever a hold is still pending.
+    // Prune already-expired holds *before* checking, not after: the hold's
+    // own setTimeout calls this same method once holdUntil passes, and
+    // without this the still-stale _pendingRemoval entry (only ever
+    // cleared *inside* _syncRows, further down) would make `holding` true
+    // for that entire call too — one render late to ever actually reach
+    // the empty-state branch below, leaving a bare empty container behind
+    // instead of the proper "no notifications" placeholder.
+    const now = Date.now();
+    for (const [key, holdUntil] of this._pendingRemoval) {
+      if (now >= holdUntil) this._pendingRemoval.delete(key);
+    }
+    const holding = this._pendingRemoval.size > 0;
+
+    if (!items.length && !holding && this._config.hide_when_empty) {
       this.classList.add('hidden');
       this._teardownRows();
       this._root.innerHTML = '';
@@ -944,7 +1125,7 @@ class NotifyDashboardCard extends HTMLElement {
     }
     this.classList.remove('hidden');
 
-    if (!items.length) {
+    if (!items.length && !holding) {
       this._teardownRows();
       if (this._containerKind !== 'empty') {
         this._root.innerHTML = '';
