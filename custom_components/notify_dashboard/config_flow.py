@@ -3,8 +3,12 @@
 Only handles the integration config (mirror_dismiss_to) via the UI. The
 `notify.dashboard` service itself keeps running through YAML (`notify: -
 platform: notify_dashboard`) — that's a limitation of the legacy notify
-platform itself, not something a config entry can fix (see design doc
-section 1.1 / the HA architecture discussion #1041 about it).
+platform itself, not something a config entry can fix: legacy notify
+services are set up via async_setup_platform straight from YAML, entirely
+outside the config-entry lifecycle, so a config entry has nothing to hook
+into to replace that registration. See notify.py's docstring and
+home-assistant/architecture discussion #1041 for why the config-entry-
+friendly replacement (NotifyEntity) exists but isn't usable here.
 """
 from __future__ import annotations
 

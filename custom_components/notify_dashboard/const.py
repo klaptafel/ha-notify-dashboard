@@ -43,8 +43,8 @@ def validate_mirror_target(value: str) -> str:
 STORAGE_VERSION = 1
 STORAGE_KEY = f"{DOMAIN}.notifications"
 
-# Retention (see design doc, point 7). One unified cap across active +
-# dismissed entries (store.py's Entry), replacing what used to be three
+# Retention. One unified cap across active + dismissed entries
+# (store.py's Entry), replacing what used to be three
 # separate limits (a notification cap, a live-activity staleness window,
 # and a separate dismissed-log cap). Already-dismissed entries are evicted
 # first (oldest first); active entries are only dropped once there aren't

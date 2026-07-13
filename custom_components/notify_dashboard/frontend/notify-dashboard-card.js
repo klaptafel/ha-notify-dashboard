@@ -6,7 +6,7 @@
 //
 // Status: fase 1, including a visual editor (tab skeleton taken 1-to-1 from
 // package-tracker-card: tab bar, ha-switch/ha-form rows, config-changed +
-// _ownFire echo protection).
+// echo protection by comparing against the last-fired config).
 // Design decisions are implemented 1-to-1: no chevron/expand, always full
 // text, dismiss button as the last feature, tap = navigate (not dismiss),
 // tag-replace = full replacement (so no client-side merge needed — the
@@ -17,12 +17,12 @@
 // status bar chip slot with chronometer, which wins when both are set,
 // same as the companion app). progress_indeterminate is picked up too.
 
-const CARD_VERSION = '1.1.7';
+const CARD_VERSION = '1.2.0';
 
 // Minimum time an action button's spinner stays visible after a tap, even
 // if the item is already gone from the sensor by then (see the action
 // button's click handler and _syncRows).
-const MIN_ACTION_SPINNER_MS = 400;
+const MIN_ACTION_SPINNER_MS = 1000;
 
 
 const CARD_DEFAULTS = {
@@ -65,9 +65,35 @@ const CARD_CSS = `
      correctly over busy wallpapers and holds up in both light and dark
      themes. Transparent by default so rows without a color still look
      exactly like any other row. */
+  /* Padding here deliberately matches HA's own hui-tile-card as closely as a
+     variable-height row can: home-assistant/frontend's ha-tile-container
+     uses padding: 0 10px + min-height: 56px (a FIXED height centering a
+     fixed two-line layout) and a 10px icon-to-content gap. Our rows can
+     grow well past two lines (message, chronometer, debug metadata), so a
+     fixed min-height would leave tall rows uneven — 10px uniform padding
+     keeps the same horizontal rhythm and approximates Tile's effective
+     vertical spacing for the common short-row case, while still working for
+     long ones. Same reasoning as package-tracker-card.js's .row. */
   .row {
-    display: flex; flex-direction: column; padding: 12px 16px; gap: 14px;
+    display: flex; flex-direction: column; padding: 10px; gap: 10px;
     background: transparent;
+  }
+  /* ha-card has a real 1px border by default (box-sizing: border-box), so
+     its content box starts 1px inside the card's outer edge. HA's own
+     hui-tile-card compensates for exactly this with the same negative
+     margin trick (see ha-tile-container.ts's .container), so its icon/text
+     sit flush with the card edge regardless of border width -- without
+     this our rows sit a visible ~1px further in than a real Tile row does.
+     Child combinator (>) matters here: a .row is always a direct child of
+     *some* ha-card (either _rowContainer itself in single layout, or its
+     own per-row wrapper in split layout — see _syncRows), so this one rule
+     covers both. Horizontal only, not vertical: stacked rows share top/
+     bottom borders with each other (see .row + .row below), so a vertical
+     negative margin would make them overlap; Tile never has this problem
+     since it's always a single row. */
+  ha-card > .row, ha-card > .empty {
+    margin-left: calc(-1 * var(--ha-card-border-width, 1px));
+    margin-right: calc(-1 * var(--ha-card-border-width, 1px));
   }
   .row + .row { border-top: 1px solid var(--divider-color, rgba(0,0,0,.06)); }
   /* debug.dismissed only — a recently-dismissed item shown as read-only
@@ -78,28 +104,37 @@ const CARD_CSS = `
      never sink down when the message spans multiple lines. Short content
      (e.g. just a title) gets vertically centered instead via .content
      itself, see below. */
-  .row-main { display: flex; align-items: flex-start; gap: 14px; }
+  .row-main { display: flex; align-items: flex-start; gap: 10px; }
 
+  /* 36px + 24px glyph match ha-tile-icon's --tile-icon-size/--mdc-icon-size exactly. */
   .icon-wrap {
-    position: relative; width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+    position: relative; width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
   }
-  .icon-wrap.clickable { cursor: pointer; -webkit-tap-highlight-color: transparent; }
-  ha-icon { --mdc-icon-size: 20px; pointer-events: none; display: flex; }
+  .icon-wrap.clickable { cursor: pointer; -webkit-tap-highlight-color: transparent; overflow: hidden; }
+  /* Tap feedback for the clickable icon — same pattern as
+     package-tracker-card.js's .icon-wrap.clickable. */
+  ha-ripple { position: absolute; inset: 0; }
+  ha-icon { --mdc-icon-size: 24px; pointer-events: none; display: flex; }
 
   /* min-height matching .icon-wrap: for short content (no message) this
-     clamps the box to 38px and justify-content centers the title within it,
+     clamps the box to 36px and justify-content centers the title within it,
      matching the icon. For longer content this has no effect — the box just
      grows along with it and everything stacks from the top, same as the
      icon. */
   .content {
-    flex: 1; min-width: 0; min-height: 38px;
+    flex: 1; min-width: 0; min-height: 36px;
     display: flex; flex-direction: column; justify-content: center;
   }
   .content.clickable { cursor: pointer; }
+  /* font-size/weight/color/line-height match ha-tile-info's --tile-info-
+     primary-* tokens; letter-spacing added to match too (line-height
+     deliberately stays condensed rather than Tile's 1.6 — see
+     package-tracker-card.js's .name for why). */
   .title {
     font-size: var(--ha-font-size-m, 14px); font-weight: var(--ha-font-weight-medium, 500);
-    color: var(--primary-text-color); line-height: var(--ha-line-height-condensed, 1.3);
+    color: var(--primary-text-color); line-height: var(--ha-line-height-condensed, 1.2);
+    letter-spacing: 0.1px;
   }
   /* Holds title + critical-text together as one line — see .critical-text
      below for why this has to be a single flex row instead of two
@@ -107,18 +142,28 @@ const CARD_CSS = `
      keeps critical-text pinned to title's *first* line if title wraps. */
   .header-line { display: flex; align-items: flex-start; gap: 8px; }
   .header-line > .title { flex: 1; min-width: 0; }
+  /* Deliberately its own third tier (medium weight, secondary-text-color),
+     not Tile's plain secondary style — same reasoning as package-tracker-
+     card.js's .carrier: this card has more text roles (title/subtitle/
+     message) than Tile's two, so subtitle reads as a label/kicker above
+     .message rather than being forced onto Tile's secondary-line styling. */
   .subtitle {
     font-size: var(--ha-font-size-s, 12px); font-weight: var(--ha-font-weight-medium, 500);
-    color: var(--secondary-text-color); line-height: var(--ha-line-height-condensed, 1.3);
+    color: var(--secondary-text-color); line-height: var(--ha-line-height-condensed, 1.2);
     margin-top: 2px;
   }
   /* Whenever title/critical_text are both absent, subtitle becomes
      .content's first child instead — it shouldn't carry the same top
      margin then as when it's following a title line above it. */
   .subtitle:first-child { margin-top: 0; }
+  /* .message is the closest analogue to Tile's secondary line — font-size/
+     weight/color/letter-spacing match ha-tile-info's --tile-info-secondary-*
+     tokens exactly (Tile uses primary-text-color for its secondary line
+     too, not a dimmed color). */
   .message {
-    font-size: var(--ha-font-size-s, 12px); color: var(--primary-text-color);
-    line-height: var(--ha-line-height-condensed, 1.3); margin-top: 3px; white-space: pre-wrap;
+    font-size: var(--ha-font-size-s, 12px); font-weight: var(--ha-font-weight-normal, 400);
+    color: var(--primary-text-color); letter-spacing: 0.4px;
+    line-height: var(--ha-line-height-condensed, 1.2); margin-top: 3px; white-space: pre-wrap;
   }
   .chronometer {
     /* The live timer replaces the message line entirely (same as iOS) — it
@@ -129,7 +174,7 @@ const CARD_CSS = `
        never text/background) — --primary-text-color is what HA themes
        actually keep legible here. */
     font-size: var(--ha-font-size-l, 20px); font-weight: var(--ha-font-weight-bold, 700);
-    color: var(--primary-text-color); line-height: var(--ha-line-height-condensed, 1.3);
+    color: var(--primary-text-color); line-height: var(--ha-line-height-condensed, 1.2);
     margin-top: 4px; font-variant-numeric: tabular-nums;
   }
   .timestamp {
@@ -142,17 +187,17 @@ const CARD_CSS = `
      source — no chip/pill class exists there at all). */
   .debug-row {
     font-size: var(--ha-font-size-xs, 11px); color: var(--secondary-text-color);
-    line-height: var(--ha-line-height-condensed, 1.3);
+    line-height: var(--ha-line-height-condensed, 1.2);
     margin-top: 4px; display: flex; align-items: center; gap: 3px; flex-wrap: wrap;
   }
   .debug-row ha-icon { --mdc-icon-size: 13px; flex-shrink: 0; }
   .debug-sep { margin: 0 2px; opacity: .5; }
   /* Lives *inside* .content's .header-line, next to title — not as a
      separate box next to .content in row-main. .content vertically centers
-     short content against the 38px icon (min-height + justify-content:
+     short content against the 36px icon (min-height + justify-content:
      center, see .content's own comment), so a box outside of it can never
      reliably track where the first line actually ends up: with just one
-     short line, that line sits centered partway down a 38px box, not flush
+     short line, that line sits centered partway down a 36px box, not flush
      at the top — a fixed "flush top" position elsewhere then drifts out of
      sync with it, worse still whenever title happens to be missing and the
      first line becomes something else entirely. Being on the same flex row
@@ -165,14 +210,14 @@ const CARD_CSS = `
   .critical-text {
     flex-shrink: 0; margin-left: auto; max-width: 96px; text-align: right;
     font-size: var(--ha-font-size-m, 14px); font-weight: var(--ha-font-weight-medium, 500);
-    color: var(--primary-text-color); line-height: var(--ha-line-height-condensed, 1.3);
+    color: var(--primary-text-color); line-height: var(--ha-line-height-condensed, 1.2);
     overflow-wrap: break-word;
   }
   /* A radial "time remaining" indicator wrapped around the dismiss button
      (or, for a persistent timed notification with no button, around the
      plain timer icon) for a timed notification — see _renderRow's
      buildRing(). Sits *behind* the icon (absolute, inset slightly beyond
-     the 38px circle) rather than inside it, so it reads as a ring around
+     the 36px circle) rather than inside it, so it reads as a ring around
      the button rather than competing with the icon for the same space.
      conic-gradient fills clockwise from --ring-percent (0% at created_at,
      100% right when the backend actually dismisses it); the mask punches
@@ -180,7 +225,7 @@ const CARD_CSS = `
      a solid pie wedge. pointer-events: none so it never steals the click
      from the button underneath. */
   .timeout-ring {
-    /* inset: 0, not negative — stays exactly within the same 38px circle
+    /* inset: 0, not negative — stays exactly within the same 36px circle
        as .row-dismiss's own hover fill, sitting right at its edge, rather
        than poking out past it. */
     position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
@@ -192,7 +237,7 @@ const CARD_CSS = `
     mask: radial-gradient(farthest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1.5px));
   }
 
-  /* Reuses .icon-wrap for the exact box (38x38, round) — ha-icon-button
+  /* Reuses .icon-wrap for the exact box (36x36, round) — ha-icon-button
      internally forces a fixed ~48x48 touch target that ignores
      --mdc-icon-button-size, so it can never be made exactly equal to the
      main icon. */
@@ -206,7 +251,8 @@ const CARD_CSS = `
   }
   .row-dismiss:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
 
-  .row-actions { display: flex; flex-direction: column; gap: 8px; margin-left: 52px; }
+  /* margin-left = icon-wrap width + row-main gap, so action buttons align under .content, not under the icon. */
+  .row-actions { display: flex; flex-direction: column; gap: 8px; margin-left: 46px; }
   .row-actions ha-control-button { width: 100%; }
   /* currentColor automatically follows the button's text color, including
      destructive (then red via --control-button-icon-color: var(--error-color)). */
@@ -246,9 +292,9 @@ const CARD_CSS = `
     0% { left: -40%; }
     100% { left: 100%; }
   }
-  /* Same width as the dismiss button (.icon-wrap, 38px), text centered. */
+  /* Same width as the dismiss button (.icon-wrap, 36px), text centered. */
   .progress-label {
-    flex-shrink: 0; width: 38px; text-align: center;
+    flex-shrink: 0; width: 36px; text-align: center;
     font-size: var(--ha-font-size-xs, 11px); color: var(--secondary-text-color);
     font-variant-numeric: tabular-nums;
   }
@@ -267,6 +313,7 @@ const CARD_CSS = `
     font-size: var(--ha-font-size-s, 12px);
     display: flex; flex-direction: column; align-items: center; gap: 8px;
   }
+  .empty-sub { opacity: .7; font-size: var(--ha-font-size-xs, 11px); }
 `;
 
 // Taken 1-to-1 from package-tracker-card-editor: tab bar + srow rows
@@ -312,35 +359,10 @@ const EDITOR_CSS = `
 // Same pattern as package-tracker-card: TRANSLATIONS[hass.language], with
 // 'en' as the fallback for untranslated languages. English is the default;
 // Dutch is supported as an additional language, not the other way around.
-const EDITOR_TRANSLATIONS = {
-  nl: {
-    content_tab: 'Bron',
-    filter_tab: 'Filter',
-    appearance_tab: 'Weergave',
-    source_section: 'Bron',
-    content_section: 'Inhoud',
-    appearance_section: 'Weergave',
-    behaviour_section: 'Gedrag',
-    entity: 'Entiteit',
-    entity_desc: 'Moet de Notify Dashboard sensor zijn (meestal sensor.notify_dashboard)',
-    live_activities: 'Live activities',
-    notifications: 'Notifications',
-    layout: 'Indeling',
-    layout_single: 'Eén kaart',
-    layout_split: 'Losse kaarten',
-    max_items: 'Max. aantal items',
-    max_items_desc: '0 = geen limiet',
-    filter_tags_section: 'Tags',
-    filter_groups_section: 'Groepen',
-    filter_include: 'Alleen deze tonen',
-    filter_exclude: 'Verbergen',
-    filter_desc: 'Komma-gescheiden, leeg = alles',
-    filter_exclude_desc: 'Komma-gescheiden; wint van het veld hierboven',
-    hide_when_empty: 'Verberg kaart als leeg',
-    confirm_dismiss: 'Bevestiging bij dismissen',
-    show_open_action: 'Open-knop tonen',
-    show_open_action_desc: 'Getoond bij een item met een url; opent die.',
-  },
+// Single combined dict (card + editor strings together) — same shape as
+// package-tracker-card.js's TRANSLATIONS. English is the base language;
+// Dutch is supported as an additional language, never a replacement.
+const TRANSLATIONS = {
   en: {
     content_tab: 'Source',
     filter_tab: 'Filter',
@@ -368,29 +390,50 @@ const EDITOR_TRANSLATIONS = {
     confirm_dismiss: 'Confirm before dismissing',
     show_open_action: 'Show Open button',
     show_open_action_desc: 'Shown for any item with a url; opens it.',
-  },
-};
-
-// Runtime card strings (not editor-only) — same fallback convention as
-// EDITOR_TRANSLATIONS: English by default, Dutch as an additional language.
-const CARD_TRANSLATIONS = {
-  nl: {
-    dismiss: 'Sluiten',
-    empty: 'Geen meldingen',
-    confirm_dismiss: 'Melding verwijderen?',
-    just_now: 'Zojuist',
-    minutes_ago: (n) => `${n}m geleden`,
-    hours_ago: (n) => `${n}u geleden`,
-    days_ago: (n) => `${n}d geleden`,
-  },
-  en: {
     dismiss: 'Dismiss',
     empty: 'No notifications',
-    confirm_dismiss: 'Remove this notification?',
+    confirm_dismiss_prompt: 'Remove this notification?',
     just_now: 'Just now',
     minutes_ago: (n) => `${n}m ago`,
     hours_ago: (n) => `${n}h ago`,
     days_ago: (n) => `${n}d ago`,
+    entity_not_found: (entity) => `Entity not found: ${entity}`,
+  },
+  nl: {
+    content_tab: 'Bron',
+    filter_tab: 'Filter',
+    appearance_tab: 'Weergave',
+    source_section: 'Bron',
+    content_section: 'Inhoud',
+    appearance_section: 'Weergave',
+    behaviour_section: 'Gedrag',
+    entity: 'Entiteit',
+    entity_desc: 'Moet de Notify Dashboard sensor zijn (meestal sensor.notify_dashboard)',
+    live_activities: 'Live activities',
+    notifications: 'Notifications',
+    layout: 'Indeling',
+    layout_single: 'Eén kaart',
+    layout_split: 'Losse kaarten',
+    max_items: 'Max. aantal items',
+    max_items_desc: '0 = geen limiet',
+    filter_tags_section: 'Tags',
+    filter_groups_section: 'Groepen',
+    filter_include: 'Alleen deze tonen',
+    filter_exclude: 'Verbergen',
+    filter_desc: 'Komma-gescheiden, leeg = alles',
+    filter_exclude_desc: 'Komma-gescheiden; wint van het veld hierboven',
+    hide_when_empty: 'Verberg kaart als leeg',
+    confirm_dismiss: 'Bevestiging bij dismissen',
+    show_open_action: 'Open-knop tonen',
+    show_open_action_desc: 'Getoond bij een item met een url; opent die.',
+    dismiss: 'Sluiten',
+    empty: 'Geen meldingen',
+    confirm_dismiss_prompt: 'Melding verwijderen?',
+    just_now: 'Zojuist',
+    minutes_ago: (n) => `${n}m geleden`,
+    hours_ago: (n) => `${n}u geleden`,
+    days_ago: (n) => `${n}d geleden`,
+    entity_not_found: (entity) => `Entiteit niet gevonden: ${entity}`,
   },
 };
 
@@ -581,11 +624,11 @@ class NotifyDashboardCard extends HTMLElement {
   }
 
   _uiTr() {
-    return CARD_TRANSLATIONS[this._hass?.language] || CARD_TRANSLATIONS['en'];
+    return TRANSLATIONS[this._hass?.language] || TRANSLATIONS['en'];
   }
 
   _dismiss(id) {
-    if (this._config.confirm_dismiss && !window.confirm(this._uiTr().confirm_dismiss)) return;
+    if (this._config.confirm_dismiss && !window.confirm(this._uiTr().confirm_dismiss_prompt)) return;
     this._hass.callService('notify_dashboard', 'dismiss', { id });
   }
 
@@ -657,6 +700,9 @@ class NotifyDashboardCard extends HTMLElement {
     const iconWrap = mk('div', 'icon-wrap' + (url ? ' clickable' : ''));
     if (url) {
       iconWrap.style.background = `color-mix(in srgb, ${color} 15%, transparent)`;
+      // Tap feedback for the clickable icon — same pattern as
+      // package-tracker-card.js's .icon-wrap.clickable.
+      iconWrap.appendChild(document.createElement('ha-ripple'));
     }
     iconWrap.appendChild(mkIcon(icon, color));
 
@@ -689,7 +735,7 @@ class NotifyDashboardCard extends HTMLElement {
 
     // critical-text rides along on the same line as title/title-fallback,
     // *inside* .content, rather than as a separate box next to it — .content
-    // vertically centers short content against the 38px icon (see its CSS
+    // vertically centers short content against the 36px icon (see its CSS
     // comment), so a box outside of it can never reliably track where that
     // first line actually ends up. Nesting them in one flex row means
     // critical-text moves exactly wherever that line moves, title or not.
@@ -747,7 +793,7 @@ class NotifyDashboardCard extends HTMLElement {
     if (debugCfg && (debugCfg.tag || debugCfg.group || debugCfg.timeout || isDismissed)) {
       const tag = data.tag;
       const group = data.group;
-      const timeout = data.timeout;
+      const timeout = Number(data.timeout);
       const parts = [];
       if (debugCfg.tag && tag) parts.push({ icon: 'mdi:tag-outline', text: tag });
       if (debugCfg.group && group) parts.push({ icon: 'mdi:folder-multiple-outline', text: group });
@@ -772,7 +818,9 @@ class NotifyDashboardCard extends HTMLElement {
     }
 
     if (url) {
-      // Tap = navigate, doesn't dismiss (see design doc 3.7).
+      // Tap = navigate, doesn't dismiss — mirrors the Companion App's own
+      // convention where opening a notification's link is a separate
+      // action from dismissing it (the explicit dismiss/X button).
       const onTap = () => this._openUrl(url);
       iconWrap.addEventListener('click', onTap);
       content.addEventListener('click', onTap);
@@ -820,7 +868,7 @@ class NotifyDashboardCard extends HTMLElement {
       closeBtn.tabIndex = 0;
       closeBtn.setAttribute('aria-label', this._uiTr().dismiss);
       // Ring appended first so it paints *behind* the icon in normal flow
-      // (no z-index needed) — both share the same 38px circle, the ring
+      // (no z-index needed) — both share the same 36px circle, the ring
       // just extends slightly past its edge (see .timeout-ring's inset).
       if (hasTimeoutCountdown) closeBtn.appendChild(buildRing());
       closeBtn.appendChild(mkIcon('mdi:close', 'var(--secondary-text-color)'));
@@ -837,7 +885,7 @@ class NotifyDashboardCard extends HTMLElement {
       // persistent notification with a timeout: no manual close button (see
       // above), but store.py's own auto-expiry doesn't check `persistent`
       // either — it'll still get dismissed on its own, so the ring
-      // shouldn't just silently disappear here. Same 38px box, not
+      // shouldn't just silently disappear here. Same 36px box, not
       // clickable/focusable this time — there's nothing to dismiss early.
       // A plain timer icon fills the ring's center, since there's no
       // dismiss-X appropriate for a non-interactive box.
@@ -1044,25 +1092,10 @@ class NotifyDashboardCard extends HTMLElement {
     }
 
     const now = Date.now();
-    // TEMPORARY diagnostic logging — remove once the "never disappears"
-    // bug is located. seenKeys vs rowKeys shows exactly which rows
-    // _syncRows *thinks* should stay vs what's actually cached, so we can
-    // tell apart "the item's still in the collected list" (a filtering
-    // bug) from "it's gone from the list but the row wasn't removed" (a
-    // DOM-sync bug here).
-    console.debug(
-      '[ND DEBUG] _syncRows cleanup pass. seenKeys=' +
-        JSON.stringify([...seen]) +
-        ' rowKeys=' +
-        JSON.stringify([...this._rows.keys()]) +
-        ' pendingRemoval=' +
-        JSON.stringify([...this._pendingRemoval.entries()])
-    );
     for (const [key, entry] of this._rows) {
       if (!seen.has(key)) {
         const holdUntil = this._pendingRemoval.get(key);
         if (holdUntil && now < holdUntil) {
-          console.debug('[ND DEBUG] holding row ' + key + ' for ' + (holdUntil - now) + 'ms more');
           // Just tapped, gone from the sensor already, but still inside its
           // minimum-visible window — leave the row (spinner and all)
           // exactly as it was, and come back once the hold expires to
@@ -1073,7 +1106,6 @@ class NotifyDashboardCard extends HTMLElement {
           }
           continue;
         }
-        console.debug('[ND DEBUG] removing row ' + key + ' from DOM+._rows');
         this._pendingRemoval.delete(key);
         entry.intervalIds.forEach((id) => clearInterval(id));
         if (entry.holdTimeout) clearTimeout(entry.holdTimeout);
@@ -1087,15 +1119,6 @@ class NotifyDashboardCard extends HTMLElement {
     if (!this._hass || !this._config) return;
     const items = this._collectItems();
     this._built = true;
-    // TEMPORARY diagnostic logging — remove once the "never disappears"
-    // bug is located.
-    const rawItems = this._hass.states[this._entity]?.attributes?.items || [];
-    console.debug(
-      '[ND DEBUG] _render(). collectedCount=' +
-        items.length +
-        ' raw=' +
-        JSON.stringify(rawItems.map((i) => ({ id: i.id, dismissed_at: i.dismissed_at })))
-    );
 
     // A row can be mid-hold (see _pendingRemoval / _syncRows' click-driven
     // "keep this one on screen a bit longer" logic) even though `items` no
@@ -1136,6 +1159,12 @@ class NotifyDashboardCard extends HTMLElement {
         ico.style.opacity = '.3';
         empty.appendChild(ico);
         empty.appendChild(mk('div', null, this._uiTr().empty));
+        // Surface a misconfigured/missing entity instead of showing the
+        // same generic empty state whether there are simply no
+        // notifications right now or the entity doesn't exist at all.
+        if (!this._hass.states[this._entity]) {
+          empty.appendChild(mk('div', 'empty-sub', this._uiTr().entity_not_found(this._entity)));
+        }
         card.appendChild(empty);
         this._root.appendChild(card);
         this._containerKind = 'empty';
@@ -1178,7 +1207,13 @@ class NotifyDashboardCard extends HTMLElement {
     const match = hass?.entities
       ? Object.entries(hass.entities).find(([, e]) => e.platform === 'notify_dashboard')
       : null;
-    return { ...CARD_DEFAULTS, entity: match ? match[0] : 'sensor.notify_dashboard' };
+    // Only `entity` — spreading CARD_DEFAULTS in here would persist every
+    // default setting into the freshly-added card's YAML verbatim,
+    // defeating the whole point of stripDefaults() (which only ever runs
+    // on edits made *after* this point, not on this initial config).
+    // _normalize() already merges CARD_DEFAULTS in at runtime, so nothing
+    // here needs them written down explicitly.
+    return { entity: match ? match[0] : 'sensor.notify_dashboard' };
   }
 
   static getConfigElement() {
@@ -1199,7 +1234,7 @@ class NotifyDashboardCardEditor extends HTMLElement {
     this._config = null;
     this._hass = null;
     this._built = false;
-    this._ownFire = false;
+    this._lastFiredConfig = null;
     this._tab = 'content';
     // Same defensive fix as NotifyDashboardCard's constructor — see its
     // comment for why this is needed.
@@ -1225,11 +1260,13 @@ class NotifyDashboardCardEditor extends HTMLElement {
     }
     // The config-changed we just fired ourselves comes back here through
     // Lovelace — without this guard that would trigger a pointless full
-    // re-render (and could reset the active tab).
-    if (this._ownFire) {
-      this._ownFire = false;
-      return;
-    }
+    // re-render (and could reset the active tab). A single-use boolean
+    // flag isn't reliable for this (confirmed elsewhere in these card
+    // projects: it can miss a second echo, or clear before a delayed one
+    // arrives, letting either fall through to a destructive re-render mid-
+    // edit) -- comparing directly against what we last actually dispatched
+    // catches every echo regardless of timing or count.
+    if (this._lastFiredConfig && deepEqual(config, this._lastFiredConfig)) return;
     this._config = this._normalize(config);
     this._renderTab();
   }
@@ -1239,7 +1276,7 @@ class NotifyDashboardCardEditor extends HTMLElement {
   }
 
   _uiTr() {
-    return EDITOR_TRANSLATIONS[this._hass?.language] || EDITOR_TRANSLATIONS['en'];
+    return TRANSLATIONS[this._hass?.language] || TRANSLATIONS['en'];
   }
 
   _fire(config) {
@@ -1251,9 +1288,10 @@ class NotifyDashboardCardEditor extends HTMLElement {
     // and recreate the ha-form text inputs mid-typing, kicking focus out
     // after every character.
     this._config = config;
-    this._ownFire = true;
+    const stripped = stripDefaults(config);
+    this._lastFiredConfig = stripped;
     this.dispatchEvent(
-      new CustomEvent('config-changed', { detail: { config: stripDefaults(config) }, bubbles: true, composed: true })
+      new CustomEvent('config-changed', { detail: { config: stripped }, bubbles: true, composed: true })
     );
   }
 

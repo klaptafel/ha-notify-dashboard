@@ -1,0 +1,18 @@
+version: 2
+updates:
+  # Test-only Python dependencies (requirements_test.txt). Not read by
+  # Home Assistant itself -- this integration has no runtime pip
+  # requirements of its own (see manifest.json).
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+
+  # Keeps the GitHub Actions themselves up to date.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

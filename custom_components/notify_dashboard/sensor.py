@@ -37,6 +37,15 @@ class NotifyDashboardSensor(SensorEntity):
     _attr_translation_key = "dashboard"
     _attr_unique_id = f"{DOMAIN}_sensor"
     _attr_should_poll = False
+    # `items` is meant to be read live off the state machine by the card,
+    # never persisted -- it's the raw companion-app/automation payload for
+    # up to MAX_ITEMS (50) entries, which comfortably exceeds the recorder's
+    # 16KB-per-attribute-set limit in normal use ("State attributes ...
+    # exceed maximum size of 16384 bytes"). Excluding it from recording is
+    # the correct fix, not shrinking MAX_ITEMS or trimming payload fields --
+    # this data was never meant for history/long-term-stats in the first
+    # place.
+    _unrecorded_attributes = frozenset({"items"})
 
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass

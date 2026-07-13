@@ -30,11 +30,12 @@ rules:
   docs-removal-instructions: done
   docs-actions: done
   brands:
-    status: todo
+    status: done
     comment: >
-      No brand assets submitted to home-assistant/brands yet. The folder
-      structure is already staged in brand/ (see brand/README.md) — only the
-      actual icon/logo files and the PR to that repo are still missing.
+      Since HA 2026.3 (Brands Proxy API), a local brand/ folder is the
+      current standard — the home-assistant/brands repo now calls its
+      custom_integrations/ folder "legacy". icon.png/icon@2x.png/logo.png/
+      logo@2x.png are all present — see brand/README.md.
   config-flow-test-coverage:
     status: done
     comment: tests/test_config_flow.py — 100% coverage of config_flow.py.

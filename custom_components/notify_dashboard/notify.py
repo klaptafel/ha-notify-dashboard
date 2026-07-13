@@ -1,8 +1,14 @@
 """Notify platform for Notify Dashboard.
 
-Legacy BaseNotificationService — deliberately not the modern NotifyEntity,
-since that one doesn't support `data`/`tag`/`target` (see design doc,
-section 1.1).
+Legacy BaseNotificationService, not the modern NotifyEntity — NotifyEntity's
+async_send_message(message, title) only takes those two arguments, with no
+way to receive `data`/`target` at all, and this integration depends on
+`data` entirely (tag-based replace/dismiss, actions, live-activity fields
+all live there). BaseNotificationService.async_send_message(message,
+**kwargs) still receives the full legacy payload via kwargs, so it's the
+only option that actually works here. See home-assistant/architecture
+discussion #1041 for the background on why NotifyEntity exists and
+deliberately leaves the legacy fields out.
 """
 from __future__ import annotations
 

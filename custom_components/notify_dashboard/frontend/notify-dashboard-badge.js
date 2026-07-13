@@ -1,13 +1,13 @@
 // notify-dashboard-badge.js
 //
-// FASE 2 — nog niet geïmplementeerd, en bewust nog niet geregistreerd via
+// PHASE 2 — not implemented yet, and deliberately not registered via
 // frontend.add_extra_js_url in __init__.py.
 //
-// Ontwerp:
-// - Los LovelaceBadge-element (customBadges, niet customCards)
-// - Toont het aantal `notifications` (geen live_activities)
-// - Zelfde filter_tags/filter_groups als de card
-// - Tap navigeert naar de view met de notify-dashboard-card
+// Design:
+// - Standalone LovelaceBadge element (customBadges, not customCards)
+// - Shows the count of `notifications` (not live_activities)
+// - Same filter_tags/filter_groups as the card
+// - Tap navigates to the view containing the notify-dashboard-card
 //
-// TODO: implementeren + registreren zodra fase 1 (integratie + hoofdcard)
-// draait en gevalideerd is.
+// TODO: implement + register once phase 1 (integration + main card)
+// is running and validated.
