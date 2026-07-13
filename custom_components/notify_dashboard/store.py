@@ -18,6 +18,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from typing import Any, TypedDict
 
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
@@ -189,6 +190,14 @@ class NotifyDashboardStore:
             await self._notify_removed(expired_tags)
 
         self._unsub_periodic_cleanup = async_track_time_interval(self.hass, _periodic, CLEANUP_INTERVAL)
+        # The store is a domain-global singleton with no config-entry-tied
+        # unload path (see __init__.py's async_unload_entry), so this timer
+        # would otherwise keep firing for the lifetime of the Python process
+        # -- fine in real HA, but pytest-homeassistant-custom-component's
+        # per-test hass fixture flags it as a lingering timer at teardown.
+        # Stopping it on EVENT_HOMEASSISTANT_STOP covers both a real HA
+        # shutdown and a test's hass.async_stop().
+        self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, lambda _event: self._unsub_periodic_cleanup())
 
     async def _async_save(self) -> None:
         expired_tags, _ = self._cleanup()
