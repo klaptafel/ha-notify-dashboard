@@ -4,6 +4,6 @@ testpaths = ["tests"]
 
 [tool.mypy]
 strict = true
-python_version = "3.13"
+python_version = "3.14"
 files = ["custom_components/notify_dashboard"]
 show_error_codes = true
