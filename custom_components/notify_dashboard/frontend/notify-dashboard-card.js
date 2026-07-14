@@ -17,7 +17,7 @@
 // status bar chip slot with chronometer, which wins when both are set,
 // same as the companion app). progress_indeterminate is picked up too.
 
-const CARD_VERSION = '1.2.0';
+const CARD_VERSION = '1.2.1';
 
 // Minimum time an action button's spinner stays visible after a tap, even
 // if the item is already gone from the sensor by then (see the action

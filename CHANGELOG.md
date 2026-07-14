@@ -2,7 +2,9 @@
 
 All notable changes to this project are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/). Versions before 1.1.0 are not retroactively documented. See git history / GitHub releases for those.
 
-## [Unreleased]
+## [1.2.1] - 2026-07-14
+
+No user-facing changes. Some internal code cleanup and a small efficiency improvement.
 
 ### Changed
 - `store.py`'s `_async_save()` and the periodic cleanup's save/dispatch logic consolidated into one shared `_persist_after_cleanup()` helper; no behavior change.
