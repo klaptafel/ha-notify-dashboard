@@ -1,7 +1,7 @@
 """Tests for the config and options flows.
 
 Instantiates the flow classes directly instead of going through
-hass.config_entries.flow.async_init()/options.async_init() — those go
+hass.config_entries.flow.async_init()/options.async_init(): those go
 through the full flow manager, which first ensures the domain's component
 (and its manifest dependencies, here http + frontend) is set up. frontend
 needs the separate hass_frontend package, which isn't installable in this
@@ -66,11 +66,11 @@ def test_mirror_dismiss_options_excludes_send_message(hass):
 
 
 # --- _mirror_dismiss_schema: deliberately just the raw selector, no
-# vol.All(..., [validate_mirror_target]) wrapping — that shape used to
+# vol.All(..., [validate_mirror_target]) wrapping: that shape used to
 # validate fine on submit but broke voluptuous_serialize.convert() (used to
 # send the form to the frontend on every render), producing a real 500 the
 # moment anyone opened the config or options flow. validate_mirror_target
-# now runs by hand via _invalid_mirror_targets in the step methods instead —
+# now runs by hand via _invalid_mirror_targets in the step methods instead;
 # see test_mirror_dismiss_schema_is_serializable below for the regression
 # test that would have caught the original bug. ---
 
@@ -88,7 +88,7 @@ def test_mirror_dismiss_schema_accepts_entity_and_raw_service(hass):
 
 def test_mirror_dismiss_schema_is_serializable(hass):
     """Regression test: HA calls voluptuous_serialize.convert() on the
-    schema every time a flow step is rendered (not just on submit) — a
+    schema every time a flow step is rendered (not just on submit); a
     schema that only validates correctly but can't be serialized still
     breaks the flow with a 500 before a user ever sees the form."""
     schema = _mirror_dismiss_schema(hass, [])

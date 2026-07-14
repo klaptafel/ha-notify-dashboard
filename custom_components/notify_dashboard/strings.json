@@ -3,12 +3,12 @@
     "step": {
       "user": {
         "title": "Notify Dashboard",
-        "description": "Setting up notify.dashboard still requires a `notify:` YAML entry (see README) — this screen only configures the optional settings below.",
+        "description": "Setting up notify.dashboard still requires a `notify:` YAML entry (see README): this screen only configures the optional settings below.",
         "data": {
           "mirror_dismiss_to": "Also clear notifications on"
         },
         "data_description": {
-          "mirror_dismiss_to": "Lists notify entities and legacy notify services/groups. Only works for Companion App (mobile_app) targets — other notify integrations don't understand this and would just show a literal text message instead."
+          "mirror_dismiss_to": "Lists notify entities and legacy notify services/groups. Only works for Companion App (mobile_app) targets; other notify integrations don't understand this and would just show a literal text message instead."
         }
       }
     },
@@ -30,12 +30,12 @@
     "step": {
       "init": {
         "title": "Notify Dashboard settings",
-        "description": "Choose which notify targets should also receive a `clear_notification` when a notification is dismissed on the dashboard — including automatically, on timeout or when trimmed by the retention limit, not just an explicit dismiss. Leave empty to disable mirroring.",
+        "description": "Choose which notify targets should also receive a `clear_notification` when a notification is dismissed on the dashboard, including automatically, on timeout or when trimmed by the retention limit, not just an explicit dismiss. Leave empty to disable mirroring.",
         "data": {
           "mirror_dismiss_to": "Also clear notifications on"
         },
         "data_description": {
-          "mirror_dismiss_to": "Lists notify entities and legacy notify services/groups. Only works for Companion App (mobile_app) targets — other notify integrations don't understand this and would just show a literal text message instead."
+          "mirror_dismiss_to": "Lists notify entities and legacy notify services/groups. Only works for Companion App (mobile_app) targets; other notify integrations don't understand this and would just show a literal text message instead."
         }
       }
     },
@@ -48,7 +48,7 @@
       "message": "No notification found with id {item_id}."
     },
     "notification_not_dismissable": {
-      "message": "{item_id} can't be dismissed — this notification is persistent."
+      "message": "{item_id} can't be dismissed: this notification is persistent."
     }
   },
   "issues": {

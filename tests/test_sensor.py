@@ -1,12 +1,12 @@
 """Tests for NotifyDashboardSensor.
 
 Attaches the entity to a real EntityPlatform directly (needed so
-has_entity_name/translation_key resolution works — that requires
+has_entity_name/translation_key resolution works: that requires
 self.platform to be set, which only a real platform attach provides) rather
 than going through async_setup_component("sensor", ...). The latter would
 pull in notify_dashboard's full manifest dependency chain (http, frontend),
 and `frontend` requires the separate `hass_frontend` package which isn't
-installable here — irrelevant to what this file actually tests anyway.
+installable here, irrelevant to what this file actually tests anyway.
 """
 from __future__ import annotations
 
@@ -75,7 +75,7 @@ async def test_sensor_populates_state_on_add(hass, loaded_store):
 
 
 async def test_sensor_state_counts_active_only_not_dismissed(hass, loaded_store):
-    """native_value is "how many things need attention now" — dismissed
+    """native_value is "how many things need attention now": dismissed
     entries stick around in `items` for history, but shouldn't inflate it."""
     await loaded_store.async_add_notification("T", "M", {"tag": "t1"})
     await loaded_store.async_dismiss(loaded_store.data["items"][0]["id"])
@@ -98,7 +98,7 @@ async def test_sensor_updates_reactively_via_dispatcher(hass, loaded_store):
 
 
 async def test_sensor_no_update_without_signal(hass, loaded_store):
-    """Without a dispatcher signal (or initial add), state must not change —
+    """Without a dispatcher signal (or initial add), state must not change:
     should_poll is False, so nothing should refresh it on its own."""
     hass.data[DOMAIN] = {"store": loaded_store}
     sensor = await _add_sensor(hass)

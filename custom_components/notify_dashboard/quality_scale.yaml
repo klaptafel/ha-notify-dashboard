@@ -10,7 +10,7 @@ rules:
       Services are registered in _async_ensure_core, called from async_setup.
       HA's bootstrap always calls async_setup for a domain first (even with
       an empty config) before setting up config entries for that same
-      domain, so in practice this always happens via async_setup — even
+      domain, so in practice this always happens via async_setup, even
       when only a config entry is present and no YAML.
   runtime-data:
     status: exempt
@@ -33,16 +33,16 @@ rules:
     status: done
     comment: >
       Since HA 2026.3 (Brands Proxy API), a local brand/ folder is the
-      current standard — the home-assistant/brands repo now calls its
+      current standard; the home-assistant/brands repo now calls its
       custom_integrations/ folder "legacy". icon.png/icon@2x.png/logo.png/
-      logo@2x.png are all present — see brand/README.md.
+      logo@2x.png are all present, see brand/README.md.
   config-flow-test-coverage:
     status: done
-    comment: tests/test_config_flow.py — 100% coverage of config_flow.py.
+    comment: tests/test_config_flow.py, 100% coverage of config_flow.py.
   test-before-configure:
     status: exempt
     comment: >
-      The config flow only lets the user pick mirror_dismiss_to entities —
+      The config flow only lets the user pick mirror_dismiss_to entities:
       no host/token/connection to validate before creating the entry.
   test-before-setup:
     status: exempt
@@ -57,7 +57,7 @@ rules:
     comment: >
       dismiss raises ServiceValidationError for an unknown id
       (NotificationNotFoundError) and for a persistent-marked notification
-      (NotificationNotDismissableError) — instead of silently failing.
+      (NotificationNotDismissableError), instead of silently failing.
   config-entry-unloading: done
   integration-owner: done
   docs-configuration-parameters: done
@@ -94,20 +94,20 @@ rules:
       EntityPlatform only creates a device for an entity when
       self.config_entry is set (homeassistant/helpers/entity_platform.py),
       which only happens when a platform is set up via
-      async_forward_entry_setups — never the case here, regardless of
+      async_forward_entry_setups: never the case here, regardless of
       whether a config entry additionally exists. Setting device_info would
       be silently ignored; same root cause as the runtime-data exemption.
   diagnostics:
     status: done
     comment: >
       diagnostics.py reports config (mirror_dismiss_to) plus aggregate
-      counts/timestamps only — deliberately never actual title/message/data
+      counts/timestamps only, deliberately never actual title/message/data
       content, since the diagnostics download is a live, user-facing feature
       commonly pasted into public GitHub issues, and notification content is
       arbitrary user/companion-app data with no fixed field list to redact.
   discovery:
     status: exempt
-    comment: Nothing to discover — this is a software-only notify target, not a device on the network.
+    comment: Nothing to discover, this is a software-only notify target, not a device on the network.
   discovery-update-info:
     status: exempt
     comment: Same reason as discovery.
@@ -125,16 +125,16 @@ rules:
     comment: One static entity, set up once; nothing discovered or added/removed at runtime.
   entity-category:
     status: exempt
-    comment: Only one entity (the aggregate sensor) — nothing diagnostic/config-only to categorize.
+    comment: Only one entity (the aggregate sensor), nothing diagnostic/config-only to categorize.
   entity-device-class:
     status: exempt
     comment: >
       The sensor's value is a raw count of current notifications/live
-      activities — no standard SensorDeviceClass fits an arbitrary count
+      activities: no standard SensorDeviceClass fits an arbitrary count
       like this the way e.g. "temperature" fits a measurement.
   entity-disabled-by-default:
     status: exempt
-    comment: The one entity is the integration's entire purpose — nothing noisy/optional to disable by default.
+    comment: The one entity is the integration's entire purpose, nothing noisy/optional to disable by default.
   entity-translations: done
   exception-translations:
     status: done
@@ -149,7 +149,7 @@ rules:
     status: exempt
     comment: >
       The existing options flow already fully covers the one config value
-      (mirror_dismiss_to) — a separate async_step_reconfigure would be a
+      (mirror_dismiss_to); a separate async_step_reconfigure would be a
       redundant thin duplicate purely to satisfy the literal rule text.
   repair-issues:
     status: done
@@ -157,11 +157,11 @@ rules:
       A repair issue is created when a mirror_dismiss_to target entity no
       longer exists (checked via hass.states.get, since a service call
       against a missing target entity_id silently no-ops rather than
-      raising — exception handling alone can't catch this case). Self-heals
+      raising; exception handling alone can't catch this case). Self-heals
       by deleting the issue once the target exists again.
   stale-devices:
     status: exempt
-    comment: Same reason as devices — no devices are ever created.
+    comment: Same reason as devices, no devices are ever created.
 
   # Platinum
   async-dependency:
@@ -169,7 +169,7 @@ rules:
     comment: No external dependency in manifest.json (empty requirements list).
   inject-websession:
     status: exempt
-    comment: No aiohttp client of our own — same reason as async-dependency.
+    comment: No aiohttp client of our own, same reason as async-dependency.
   strict-typing:
     status: done
     comment: mypy --strict passes with zero errors across all 7 source files (pyproject.toml [tool.mypy]).

@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/). Versions before 1.1.0 are not retroactively documented. See git history / GitHub releases for those.
 
+## [Unreleased]
+
+### Changed
+- `store.py`'s `_async_save()` and the periodic cleanup's save/dispatch logic consolidated into one shared `_persist_after_cleanup()` helper; no behavior change.
+- The card and editor classes' duplicated `_uiTr()` translation lookup consolidated into a shared `resolveUiTr()` helper.
+- The editor's duplicated tags/groups filter-section markup consolidated into a shared `_renderFilterPair()` helper.
+- `_renderRow()` (a ~320-line method) split into `_buildRowIcon`/`_buildRowContent`/`_appendDebugRow`/`_buildRowDismissArea`/`_buildRowActions`; no behavior change.
+- `sensor.py`'s `native_value`/`extra_state_attributes` update now copies each item shallowly (`[dict(item) for item in items]`) instead of a full `copy.deepcopy()`; each item's nested `data` payload is only ever set once at creation and never mutated afterward, so a shallow per-item copy already preserves the frozen-snapshot guarantee the deepcopy was there for. No behavior change.
+
 ## [1.2.0] - 2026-07-13
 
 Notifications now give a satisfying tap ripple when clicked, the card fits properly into Home Assistant's Sections dashboards, and rows are aligned more closely with the native Tile card look. Also fixes a background warning about oversized notification history clogging up your logbook, a bug where editor fields lost focus while typing, and a version-number mismatch between the integration and the card.

@@ -2,7 +2,7 @@
 async_unload_entry / the Lovelace resource registration).
 
 Service *behavior* (dismiss/dismiss_all/fire_action bodies) lives in
-test_services.py — this file is only about how everything gets wired up.
+test_services.py: this file is only about how everything gets wired up.
 """
 from __future__ import annotations
 
@@ -223,7 +223,7 @@ async def test_lovelace_registration_waits_for_started_event_when_not_running(
 
 # --- CONFIG_SCHEMA: mirror_dismiss_to accepts both notify entity ids and
 # bare legacy notify service names (e.g. a YAML `notify: - platform: group`,
-# which has no entity at all — see config_flow.py's _mirror_dismiss_options
+# which has no entity at all, see config_flow.py's _mirror_dismiss_options
 # for the full reasoning) ---
 
 

@@ -2,7 +2,7 @@
 fire_action) and the mirror_dismiss_to forwarding they trigger.
 
 Setup wiring itself (async_setup / async_setup_entry / Lovelace resource
-registration) is covered in test_init.py — this file only exercises the
+registration) is covered in test_init.py: this file only exercises the
 service handler bodies defined inside _async_ensure_core.
 """
 from __future__ import annotations
@@ -115,7 +115,7 @@ async def test_dismiss_without_tag_does_not_forward(hass, store, mock_notify_tar
 
 async def test_dismiss_mirror_forward_failure_does_not_break_dismiss(hass, store):
     # Entity exists (so the missing-target issue check passes) but no
-    # "notify.send_message" service is registered at all — simulates a
+    # "notify.send_message" service is registered at all: simulates a
     # target that exists but fails to actually handle the call. The
     # best-effort forward must be swallowed by _clear_one's try/except,
     # without affecting the dismiss itself, and without creating a repair
@@ -165,7 +165,7 @@ async def test_dismiss_mirror_target_reappearing_clears_repair_issue(
     await hass.async_block_till_done()
     assert ir.async_get(hass).async_get_issue(DOMAIN, "missing_mirror_target_notify.mobile_app") is not None
 
-    # Then: target exists again (e.g. companion app reinstalled) — the next
+    # Then: target exists again (e.g. companion app reinstalled); the next
     # dismiss should self-heal by deleting the stale issue.
     hass.states.async_set("notify.mobile_app", "unknown")
     await store.async_add_notification("T", "M", {"tag": "t2"})
@@ -232,7 +232,7 @@ async def test_dismiss_forwards_to_raw_notify_service(hass, store):
 
 async def test_dismiss_raw_service_forward_failure_does_not_break_dismiss(hass, store):
     # Registered (passes the has_service check, no repair issue) with a
-    # schema our clear_notification payload can't satisfy — schema
+    # schema our clear_notification payload can't satisfy: schema
     # validation raises synchronously as part of the call itself, even with
     # blocking=False (unlike an exception raised from inside the handler,
     # which runs as a background task and wouldn't be caught here at all).
@@ -311,7 +311,7 @@ async def test_expired_notification_forwards_mirror_dismiss(hass, store, mock_no
     store.data["items"][0]["created_at"] = time.time() - 100
 
     # Any subsequent store write runs cleanup first, discovering the
-    # now-expired entry above — same as an explicit dismiss would.
+    # now-expired entry above, same as an explicit dismiss would.
     await store.async_add_notification("T2", "M2", {})
     await hass.async_block_till_done()
 

@@ -22,11 +22,11 @@ def mock_notify_target(hass):
     """Fake notify.* endpoint to assert mirror_dismiss_to forwarding.
 
     _async_mirror_clear calls hass.services.async_call("notify",
-    "send_message", ..., target=...) — a plain service call, not an
+    "send_message", ..., target=...): a plain service call, not an
     entity-service lookup, so a real fake NotifyEntity isn't needed. A state
     is set for notify.mobile_app too: _async_mirror_clear checks
     hass.states.get(entity_id) first (a real target service call against a
-    nonexistent entity_id silently does nothing, no exception — the
+    nonexistent entity_id silently does nothing, no exception; the
     try/except around the actual call can't catch that case), so without
     this the mock would never even get called.
     """
@@ -40,10 +40,10 @@ async def hass_http(hass):
 
     _async_ensure_core calls hass.http.async_register_static_paths(...), so
     this is required for any test exercising it. `http` itself needs no
-    packages beyond what homeassistant core already pulls in — unlike
+    packages beyond what homeassistant core already pulls in: unlike
     `frontend`, which additionally needs the separate `hass_frontend`
     package that isn't installable in this environment (confirmed: pip has
-    no matching distribution for it here). Keep this fixture minimal — do
+    no matching distribution for it here). Keep this fixture minimal; do
     not fold `frontend` into it.
     """
     await async_setup_component(hass, "http", {})
@@ -56,7 +56,7 @@ def frontend_extra_js_urls(hass):
 
     _async_register_lovelace_resource's YAML-mode branch calls
     frontend.add_extra_js_url(hass, url), which just does
-    hass.data["frontend_extra_module_url"].add(url) — that key is normally
+    hass.data["frontend_extra_module_url"].add(url): that key is normally
     seeded by frontend's own async_setup, which we can't run for real here
     (see hass_http above). Pre-seeding it is a faithful stand-in for "the
     real frontend component happens to already be set up", not a mock of
@@ -70,7 +70,7 @@ def frontend_extra_js_urls(hass):
 @pytest.fixture
 def fake_lovelace_storage(hass):
     """Stand-in for hass.data["lovelace"] in storage-mode (UI-managed
-    dashboards) — the branch _async_register_lovelace_resource takes when a
+    dashboards): the branch _async_register_lovelace_resource takes when a
     real dashboard resources collection exists. Mirrors just the subset of
     lovelace.dashboard.ResourceStorageCollection's interface our code calls.
     """
@@ -112,7 +112,7 @@ def fake_lovelace_storage(hass):
 def no_discovery(monkeypatch):
     """Patch out discovery.async_load_platform for __init__.py tests.
 
-    _async_ensure_core fires this to load sensor.py via discovery — but
+    _async_ensure_core fires this to load sensor.py via discovery, but
     since notify_dashboard's manifest declares frontend as a dependency,
     letting it run for real drags in a full frontend/websocket_api/lovelace
     bootstrap cascade that fails on the missing hass_frontend package (same
@@ -137,7 +137,7 @@ async def loaded_store(hass):
     """A loaded NotifyDashboardStore with its periodic cleanup timer
     guaranteed to be unsubscribed on teardown.
 
-    async_track_time_interval re-arms itself recursively — if a test doesn't
+    async_track_time_interval re-arms itself recursively: if a test doesn't
     unsub before ending, the hass fixture's teardown fails the *next* test
     with a "lingering timer" assertion, not this one. Always go through this
     fixture (or loaded_store_factory below, for the on_removed case) instead

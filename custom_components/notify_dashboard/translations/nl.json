@@ -3,12 +3,12 @@
     "step": {
       "user": {
         "title": "Notify Dashboard",
-        "description": "Instellen van notify.dashboard vereist nog steeds een `notify:` YAML-regel (zie README) — dit scherm regelt alleen de optionele instellingen hieronder.",
+        "description": "Instellen van notify.dashboard vereist nog steeds een `notify:` YAML-regel (zie README): dit scherm regelt alleen de optionele instellingen hieronder.",
         "data": {
           "mirror_dismiss_to": "Meldingen ook wissen op"
         },
         "data_description": {
-          "mirror_dismiss_to": "Toont notify-entiteiten en legacy notify-services/groepen. Werkt alleen voor Companion App (mobile_app)-doelen — andere notify-integraties begrijpen dit niet en tonen dan een letterlijk tekstbericht."
+          "mirror_dismiss_to": "Toont notify-entiteiten en legacy notify-services/groepen. Werkt alleen voor Companion App (mobile_app)-doelen; andere notify-integraties begrijpen dit niet en tonen dan een letterlijk tekstbericht."
         }
       }
     },
@@ -30,12 +30,12 @@
     "step": {
       "init": {
         "title": "Notify Dashboard instellingen",
-        "description": "Kies welke notify-doelen ook een `clear_notification` moeten krijgen wanneer een melding op het dashboard gesloten wordt — ook automatisch, bij een timeout of wanneer de bewaarlimiet iets verwijdert, niet alleen bij handmatig sluiten. Leeg laten om doorsturen uit te schakelen.",
+        "description": "Kies welke notify-doelen ook een `clear_notification` moeten krijgen wanneer een melding op het dashboard gesloten wordt, ook automatisch, bij een timeout of wanneer de bewaarlimiet iets verwijdert, niet alleen bij handmatig sluiten. Leeg laten om doorsturen uit te schakelen.",
         "data": {
           "mirror_dismiss_to": "Meldingen ook wissen op"
         },
         "data_description": {
-          "mirror_dismiss_to": "Toont notify-entiteiten en legacy notify-services/groepen. Werkt alleen voor Companion App (mobile_app)-doelen — andere notify-integraties begrijpen dit niet en tonen dan een letterlijk tekstbericht."
+          "mirror_dismiss_to": "Toont notify-entiteiten en legacy notify-services/groepen. Werkt alleen voor Companion App (mobile_app)-doelen; andere notify-integraties begrijpen dit niet en tonen dan een letterlijk tekstbericht."
         }
       }
     },
@@ -48,7 +48,7 @@
       "message": "Geen melding gevonden met id {item_id}."
     },
     "notification_not_dismissable": {
-      "message": "{item_id} kan niet worden gesloten — deze melding is persistent."
+      "message": "{item_id} kan niet worden gesloten: deze melding is persistent."
     }
   },
   "issues": {

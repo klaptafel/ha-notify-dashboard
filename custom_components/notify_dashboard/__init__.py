@@ -1,11 +1,11 @@
 """The Notify Dashboard integration.
 
 Two independent setup paths come together here:
-- YAML (`notify_dashboard:` config key) — still supported for anyone who
+- YAML (`notify_dashboard:` config key): still supported for anyone who
   prefers to keep everything in YAML, and for the mandatory `notify: -
   platform: notify_dashboard` line (which can't go through a config entry
   anyway, see config_flow.py).
-- Config entry (added via the UI) — only handles `mirror_dismiss_to`,
+- Config entry (added via the UI): only handles `mirror_dismiss_to`,
   adjustable via "Configure" without a restart.
 
 The core (store, services, frontend, sensor) is only ever set up once,
@@ -54,7 +54,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class NotifyDashboardData(TypedDict):
-    """Shape of hass.data[DOMAIN] — runtime_data is exempt (see
+    """Shape of hass.data[DOMAIN]: runtime_data is exempt (see
     quality_scale.yaml): the legacy notify platform this integration relies
     on never receives a ConfigEntry, so there's no entry to hang typed
     runtime_data off in the first place."""
@@ -64,7 +64,7 @@ class NotifyDashboardData(TypedDict):
 
 
 def get_domain_data(hass: HomeAssistant) -> NotifyDashboardData:
-    """Typed accessor for hass.data[DOMAIN] — one cast at the Any/typed
+    """Typed accessor for hass.data[DOMAIN]: one cast at the Any/typed
     boundary here, real key/type checking at every call site using this."""
     return cast(NotifyDashboardData, hass.data[DOMAIN])
 
@@ -96,7 +96,7 @@ FIRE_ACTION_SCHEMA = vol.Schema(
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up via YAML (`notify_dashboard:` key) — optional."""
+    """Set up via YAML (`notify_dashboard:` key): optional."""
     await _async_ensure_core(hass, config)
 
     yaml_conf = config.get(DOMAIN, {})
@@ -104,7 +104,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         if hass.config_entries.async_entries(DOMAIN):
             _LOGGER.warning(
                 "Found both the YAML key 'notify_dashboard:' and a config "
-                "entry — the settings from 'Configure' in the UI take "
+                "entry: the settings from 'Configure' in the UI take "
                 "precedence. Remove the YAML key to get rid of this warning."
             )
         else:
@@ -114,7 +114,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up via the UI (config entry) — handles mirror_dismiss_to."""
+    """Set up via the UI (config entry): handles mirror_dismiss_to."""
     await _async_ensure_core(hass, {})
 
     get_domain_data(hass)["mirror_dismiss_to"] = entry.options.get(CONF_MIRROR_DISMISS_TO, [])
@@ -124,7 +124,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Remove the config entry — the core (store/services/frontend) stays in
+    """Remove the config entry: the core (store/services/frontend) stays in
     place as long as the YAML platform line (`notify: - platform:
     notify_dashboard`) is still active; that can't be cleaned up separately
     from this entry."""
@@ -138,7 +138,7 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
 
 async def _async_ensure_core(hass: HomeAssistant, config: ConfigType) -> None:
-    """Set up the store, services, frontend, and sensor exactly once —
+    """Set up the store, services, frontend, and sensor exactly once:
     idempotent, regardless of whether YAML or the config entry arrives first."""
     if DOMAIN in hass.data:
         return
@@ -147,7 +147,7 @@ async def _async_ensure_core(hass: HomeAssistant, config: ConfigType) -> None:
         # A notification that times out/gets capacity-trimmed, or that's
         # cleared via a clear_notification command sent straight to
         # notify.dashboard, disappears from the dashboard exactly like an
-        # explicit dismiss — it should clear the phone notification too,
+        # explicit dismiss: it should clear the phone notification too,
         # not leave it behind. Safe to reference get_domain_data(hass) here
         # despite hass.data[DOMAIN] not existing yet at this exact point in
         # _async_ensure_core: this callback only actually runs later (from
@@ -164,7 +164,7 @@ async def _async_ensure_core(hass: HomeAssistant, config: ConfigType) -> None:
     }
     hass.data[DOMAIN] = data
 
-    # Independent of each other (neither's result feeds the other) — no
+    # Independent of each other (neither's result feeds the other); no
     # reason to await them one after the other on the setup path.
     frontend_path = Path(__file__).parent / "frontend"
     await asyncio.gather(
@@ -175,7 +175,7 @@ async def _async_ensure_core(hass: HomeAssistant, config: ConfigType) -> None:
     )
 
     # Wait until HA is fully started before registering the Lovelace
-    # resource — otherwise hass.data["lovelace"] (the storage collection)
+    # resource: otherwise hass.data["lovelace"] (the storage collection)
     # sometimes doesn't exist yet, which caused exactly the random
     # "Configuration error" behavior (a race condition, not consistently
     # reproducible).
@@ -196,7 +196,7 @@ async def _async_ensure_core(hass: HomeAssistant, config: ConfigType) -> None:
         try:
             # Mirror-forwarding (if a tag's involved and mirror_dismiss_to is
             # configured) happens inside async_dismiss itself via the
-            # on_removed callback set up above — same single mechanism used
+            # on_removed callback set up above: same single mechanism used
             # for every other way an item can leave the store.
             await store.async_dismiss(item_id)
         except NotificationNotFoundError as err:
@@ -217,7 +217,7 @@ async def _async_ensure_core(hass: HomeAssistant, config: ConfigType) -> None:
 
     async def handle_fire_action(call: ServiceCall) -> None:
         # Fires hass.bus.async_fire server-side instead of letting the card
-        # itself call the fire_event websocket action — that one requires
+        # itself call the fire_event websocket action: that one requires
         # @require_admin in HA core, so it would silently fail for non-admin
         # dashboard viewers (e.g. a kiosk tablet on a restricted account). A
         # regular service call like this one doesn't have that restriction.
@@ -237,7 +237,7 @@ async def _async_ensure_core(hass: HomeAssistant, config: ConfigType) -> None:
 
 def _frontend_content_hash(path: Path) -> str:
     """A short hash of the card's own JS content, used as the cache buster
-    below instead of the integration version — content-derived means it's
+    below instead of the integration version: content-derived means it's
     physically impossible to ship a frontend change without the URL
     changing too, unlike a version string someone has to remember to bump
     for every edit (that discipline slipped at least once already, and
@@ -255,10 +255,10 @@ async def _async_register_lovelace_resource(hass: HomeAssistant) -> None:
     behavior. When the content changes, the existing resource gets updated
     instead of creating a duplicate.
 
-    NOTE — there is an open core bug (home-assistant/core#165767, reported
+    NOTE: there is an open core bug (home-assistant/core#165767, reported
     March 2026): if an integration calls resources.async_create_item()
     before the existing resources have been loaded, that overwrites the
-    entire stored resource list with just the new item — so all of the
+    entire stored resource list with just the new item, so all of the
     user's other resources are lost. We explicitly prevent this by calling
     async_load() ourselves first (exactly the fix suggested in the issue
     itself), so the existing data is already in memory before we add
@@ -271,7 +271,7 @@ async def _async_register_lovelace_resource(hass: HomeAssistant) -> None:
 
     lovelace_data = hass.data.get("lovelace")
     if not lovelace_data or getattr(lovelace_data, "resource_mode", None) != "storage":
-        # YAML-mode dashboards don't have a storage resources collection —
+        # YAML-mode dashboards don't have a storage resources collection:
         # add_extra_js_url remains the only option there.
         frontend.add_extra_js_url(hass, url)
         return
@@ -297,9 +297,9 @@ async def _async_mirror_clear(hass: HomeAssistant, tag: str) -> None:
     """Send clear_notification to the mirror_dismiss_to targets.
 
     Each target is either a notify *entity* (dispatched via the generic
-    notify.send_message action + target — modern notify integrations, like
+    notify.send_message action + target: modern notify integrations, like
     the companion app these days, all run through that one shared endpoint
-    instead of a service per device) or a legacy notify *service* — a
+    instead of a service per device) or a legacy notify *service*, a
     service registered directly under the notify domain with no entity at
     all, the only way to reach e.g. a YAML `notify: - platform: group` (or
     any other BaseNotificationService-based integration, including this
@@ -314,7 +314,7 @@ async def _async_mirror_clear(hass: HomeAssistant, tag: str) -> None:
         issue_id = _mirror_target_issue_id(target)
         is_entity = is_mirror_entity(target)
         # A target service call with no matching entity/service just
-        # silently does nothing (no exception) — the try/except below can't
+        # silently does nothing (no exception): the try/except below can't
         # catch this case at all, so it's checked explicitly here.
         exists = (
             hass.states.get(target) is not None
@@ -341,7 +341,7 @@ async def _async_mirror_clear(hass: HomeAssistant, tag: str) -> None:
                     "notify", "send_message", payload, target={"entity_id": target}, blocking=False
                 )
             else:
-                # The service name itself is the target here — a raw
+                # The service name itself is the target here: a raw
                 # legacy service call, not the entity-based target selector.
                 await hass.services.async_call("notify", target, payload, blocking=False)
         except Exception:  # noqa: BLE001

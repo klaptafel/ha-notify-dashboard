@@ -1,14 +1,14 @@
 """Persistent storage for Notify Dashboard.
 
-One list of Entry items — notifications and live activities together,
+One list of Entry items: notifications and live activities together,
 told apart by data["live_update"] (the same field the companion app itself
 uses, not a separate "kind" label we'd have to keep in sync). Dismissing
-(by any means — the close button, clear_notification, timeout, live-
+(by any means: the close button, clear_notification, timeout, live-
 activity staleness) never removes an entry outright: it sets
 dismissed_at/dismiss_reason and leaves it in place, so the sensor can
 still show recent history. The only thing that actually drops an entry is
-the total MAX_ITEMS cap — oldest first, active or dismissed, once there
-are simply too many.
+the total MAX_ITEMS cap (oldest first, active or dismissed, once there
+are simply too many).
 """
 from __future__ import annotations
 
@@ -39,24 +39,24 @@ from .const import (
 )
 
 # Worst-case lag between an item's real expiry and it actually being
-# dismissed server-side — visible now via the card's timeout ring (see
+# dismissed server-side; visible now via the card's timeout ring (see
 # notify-dashboard-card.js), which reaches 100% at the *real* expiry
 # instant and then has to wait for this tick before the row actually
 # disappears. At 5s this was clearly noticeable on a short (e.g. 10s)
-# timeout — up to 50% extra wait past a full ring — so cut down further;
+# timeout (up to 50% extra wait past a full ring), so cut down further;
 # the check itself stays cheap regardless (one pass over a small
 # in-memory list) no matter how often it runs.
 CLEANUP_INTERVAL = timedelta(seconds=1)
 
 
 class Entry(TypedDict):
-    """A single dashboard item — a notification or a live activity
+    """A single dashboard item: a notification or a live activity
     (is_live_update tells them apart), active or dismissed (dismissed_at
     is None while active). Kept in the list after dismissal so the sensor
     can show recent history; only the MAX_ITEMS cap ever drops one outright.
 
     tag/group/timeout are deliberately *not* fields here even though every
-    entry has them in practice — they're always in `data` already (the
+    entry has them in practice; they're always in `data` already (the
     companion-app payload itself), so a second top-level copy would be
     pure duplication (same reasoning as is_live_update/is_persistent below,
     just for entries instead of dismiss reasons). Use entry_tag/entry_group/
@@ -86,7 +86,7 @@ class NotificationNotFoundError(Exception):
 class NotificationNotDismissableError(Exception):
     """Item exists, but may not be dismissed manually.
 
-    Applies only to persistent-marked notifications — never to live
+    Applies only to persistent-marked notifications: never to live
     activities, which stay dismissable via the same close button
     regardless of `persistent` (a deliberate, pre-existing asymmetry: a
     live activity's own lifecycle is normally ended via clear_notification,
@@ -103,7 +103,7 @@ def entry_group(entry: Entry) -> str | None:
 
 
 def entry_timeout(entry: Entry) -> float | None:
-    """timeout is raw companion-app/automation payload — usually a number,
+    """timeout is raw companion-app/automation payload, usually a number,
     but templated automations often send it as a string (e.g. "30"), which
     would otherwise blow up the created_at + timeout math in _cleanup.
     Coerce defensively; anything not a real number is treated as "no
@@ -120,13 +120,13 @@ def entry_timeout(entry: Entry) -> float | None:
 
 
 def is_live_update(entry: Entry) -> bool:
-    """Same field the companion app itself uses to mark a live activity —
+    """Same field the companion app itself uses to mark a live activity:
     no separate "kind" concept invented on top of it."""
     return bool(entry["data"].get("live_update"))
 
 
 def is_persistent(entry: Entry) -> bool:
-    """persistent only blocks manual dismiss for notifications — a live
+    """persistent only blocks manual dismiss for notifications: a live
     activity stays dismissable via the close button regardless, so that
     exception lives here rather than being re-derived at each call site."""
     return not is_live_update(entry) and bool(entry["data"].get("persistent"))
@@ -150,8 +150,8 @@ class NotifyDashboardStore:
         self._data: NotifyDashboardStoreData = {"items": []}
         self._unsub_periodic_cleanup: CALLBACK_TYPE | None = None
         # Called with the tags of anything that stops being active, by any
-        # means — dismiss/dismiss_all, automatic cleanup (age/timeout
-        # expiry, live-activity staleness, the MAX_ITEMS hard cap — see
+        # means: dismiss/dismiss_all, automatic cleanup (age/timeout
+        # expiry, live-activity staleness, the MAX_ITEMS hard cap; see
         # _cleanup), and an explicit clear_notification sent straight to
         # notify.dashboard (see async_clear_by_tag). One mechanism for all
         # of them, since they all disappear from the dashboard exactly like
@@ -170,7 +170,7 @@ class NotifyDashboardStore:
             self._data = stored
         # else: either genuinely empty, or persisted under the old
         # notifications/live_activities/dismissed shape from a version that
-        # was never actually released — starting fresh instead of writing
+        # was never actually released; starting fresh instead of writing
         # migration logic for a schema nobody depends on.
         self._cleanup()
         self._start_periodic_cleanup()
@@ -183,11 +183,7 @@ class NotifyDashboardStore:
             return
 
         async def _periodic(_now: datetime) -> None:
-            expired_tags, anything_changed = self._cleanup()
-            if anything_changed:
-                await self._store.async_save(self._data)
-                async_dispatcher_send(self.hass, SIGNAL_UPDATE)
-            await self._notify_removed(expired_tags)
+            await self._persist_after_cleanup(force=False)
 
         unsub = async_track_time_interval(self.hass, _periodic, CLEANUP_INTERVAL)
         self._unsub_periodic_cleanup = unsub
@@ -201,9 +197,17 @@ class NotifyDashboardStore:
         self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, lambda _event: unsub())
 
     async def _async_save(self) -> None:
-        expired_tags, _ = self._cleanup()
-        await self._store.async_save(self._data)
-        async_dispatcher_send(self.hass, SIGNAL_UPDATE)
+        await self._persist_after_cleanup(force=True)
+
+    async def _persist_after_cleanup(self, *, force: bool) -> None:
+        """Runs _cleanup(), then save+dispatch when something actually
+        changed (or unconditionally when force=True, since _async_save's
+        caller already mutated something before calling it), then always
+        forwards any newly-expired tags for mirror-dismiss."""
+        expired_tags, anything_changed = self._cleanup()
+        if force or anything_changed:
+            await self._store.async_save(self._data)
+            async_dispatcher_send(self.hass, SIGNAL_UPDATE)
         await self._notify_removed(expired_tags)
 
     async def _notify_removed(self, tags: list[str]) -> None:
@@ -220,12 +224,12 @@ class NotifyDashboardStore:
         down to MAX_ITEMS via _apply_cap.
 
         Returns (changed_tags, anything_changed). changed_tags is only the
-        subset of touched entries that had a tag — the only thing
+        subset of touched entries that had a tag: the only thing
         mirror_dismiss_to forwarding (tag-keyed) can act on. anything_changed
         reflects every mutation regardless of tag: an *untagged* notification
         timing out still needs a save + dispatcher signal, or it only ever
         stops showing after something else happens to trigger an update
-        (confirmed: this was a real bug — the periodic timer used to gate
+        (confirmed: this was a real bug; the periodic timer used to gate
         the save/dispatch on changed_tags being non-empty).
         """
         now = time.time()
@@ -257,14 +261,14 @@ class NotifyDashboardStore:
         return changed_tags, anything_changed or cap_changed
 
     def _apply_cap(self) -> tuple[list[str], bool]:
-        """Hard-purge down to MAX_ITEMS — the one and only place an entry
+        """Hard-purge down to MAX_ITEMS: the one and only place an entry
         actually leaves the list outright.
 
         Prefers evicting already-dismissed entries (oldest first) over
-        active ones — active items are the actually relevant state,
+        active ones: active items are the actually relevant state,
         dismissed ones are just a nice-to-have history. Active entries are
         only evicted once there aren't enough dismissed ones left to make
-        room. Returns (evicted_tags, anything_evicted) — evicted_tags is
+        room. Returns (evicted_tags, anything_evicted); evicted_tags is
         only the still-active, tagged subset (for mirror_dismiss_to);
         anything_evicted covers every eviction regardless of tag/state.
         """
@@ -274,7 +278,7 @@ class NotifyDashboardStore:
             return [], False
 
         # items is newest-first, so within each bucket built by iterating it
-        # in order, the tail is already "oldest of that kind" — no separate
+        # in order, the tail is already "oldest of that kind": no separate
         # reverse pass needed.
         dismissed: list[Entry] = []
         active: list[Entry] = []
@@ -297,7 +301,7 @@ class NotifyDashboardStore:
         tag = data.get("tag")
         now = time.time()
         if tag:
-            # Tag-replace = full replacement, no field merge — only ever
+            # Tag-replace = full replacement, no field merge: only ever
             # replaces a currently-active entry (whatever kind); an old,
             # already-dismissed entry with the same tag stays in history.
             existing = self._find_active_by_tag(tag)
@@ -319,7 +323,7 @@ class NotifyDashboardStore:
     async def async_upsert_live_activity(
         self, title: str | None, message: str, data: dict[str, Any]
     ) -> None:
-        """Ending a live activity isn't a special progress value — checked
+        """Ending a live activity isn't a special progress value: checked
         against the actual companion-app docs, the documented way to end
         one is the exact same mechanism as a regular notification:
         clear_notification + tag (see async_clear_by_tag)."""
@@ -327,7 +331,7 @@ class NotifyDashboardStore:
         if not tag:
             return  # Without a tag we can't track/update a live activity.
         # is_live_update() is the sole kind discriminator everywhere else in
-        # the store — guarantee it's actually true for anything reaching
+        # the store: guarantee it's actually true for anything reaching
         # the store through this method, rather than trusting every caller
         # to have already set it (in practice notify.py always does, since
         # that's its own routing condition, but this removes the footgun).
@@ -336,9 +340,9 @@ class NotifyDashboardStore:
         existing_active = self._find_active_by_tag(tag)
         created_at = existing_active["created_at"] if existing_active is not None else now
         # A live activity's id IS its tag (dismiss-by-tag is a documented,
-        # public part of the dismiss service — changing that to a fresh
+        # public part of the dismiss service: changing that to a fresh
         # uuid would break it), so any entry sharing this id has to go
-        # before inserting the new one — not just the active one. Without
+        # before inserting the new one, not just the active one. Without
         # this, a new activity reusing a tag whose previous run was already
         # dismissed (but still lingering in history since dismissal no
         # longer removes entries) would collide with it: two entries with
@@ -360,9 +364,9 @@ class NotifyDashboardStore:
 
     async def async_clear_by_tag(self, tag: str) -> None:
         """The companion-app-style clear_notification command, routed here
-        from notify.py — the documented way to end both a regular
+        from notify.py: the documented way to end both a regular
         notification and a live activity sharing the same tag. Reports the
-        tag for mirror-forwarding only when something was actually active —
+        tag for mirror-forwarding only when something was actually active,
         a clear_notification for a tag that was never here (or already
         inactive) shouldn't create a phantom forward.
         """
@@ -379,21 +383,21 @@ class NotifyDashboardStore:
 
         For notifications, id is a uuid; for live activities, id equals the
         tag. Persistent-marked notifications can't be dismissed
-        (NotificationNotDismissableError) — live activities always can,
+        (NotificationNotDismissableError); live activities always can,
         regardless of `persistent`. An unknown id raises
-        NotificationNotFoundError — the caller (the dismiss service)
+        NotificationNotFoundError: the caller (the dismiss service)
         translates that into a clear error message instead of silently
         doing nothing.
 
         An id that exists but is already inactive is a harmless no-op
-        (returns None, no error) rather than NotificationNotFoundError —
+        (returns None, no error) rather than NotificationNotFoundError:
         dismiss has to be idempotent since more than one thing can
         legitimately race to dismiss the same item, e.g. the card's own
         action-button fallback dismiss (fired 600ms after tapping an
         action, in case nothing else closes it) against an automation that
         reacts to that same action and dismisses it itself, likely faster.
         Treating the loser of that race as an error was a real, confirmed
-        bug — surfaced only once live sensor updates actually started
+        bug, surfaced only once live sensor updates actually started
         reaching the browser promptly, since before that fix neither side
         of the race was ever fast enough for it to matter in practice.
         """
@@ -413,10 +417,10 @@ class NotifyDashboardStore:
         return match
 
     async def async_dismiss_all_notifications(self) -> list[Entry]:
-        """Dismiss all active, non-persistent, non-live-update entries —
+        """Dismiss all active, non-persistent, non-live-update entries:
         live activities are left untouched (same as before).
 
-        Returns the newly-dismissed items — same shape as async_dismiss.
+        Returns the newly-dismissed items, same shape as async_dismiss.
         """
         now = time.time()
         cleared = []

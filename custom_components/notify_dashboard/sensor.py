@@ -1,13 +1,11 @@
 """Sensor that exposes the notify_dashboard data to the frontend card.
 
-The card reads this entity's `items` attribute — one list holding every
+The card reads this entity's `items` attribute: one list holding every
 notification/live activity, active and recently-dismissed alike (see
 store.py). Updates reactively via a dispatcher signal as soon as the store
-changes — no polling.
+changes, no polling.
 """
 from __future__ import annotations
-
-import copy
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant, callback
@@ -58,19 +56,24 @@ class NotifyDashboardSensor(SensorEntity):
     def _handle_update(self) -> None:
         store = get_domain_data(self.hass)["store"]
         items = store.data["items"]
-        # The state itself is "how many things need attention now" — active
+        # The state itself is "how many things need attention now": active
         # count, not the historical total (dismissed entries stick around
         # in `items` for a while, but shouldn't inflate the headline number).
         self._attr_native_value = sum(1 for item in items if is_active(item))
-        # deepcopy, not a live reference: store.py mutates entries in place
-        # (dismissed_at, insert/remove on the same list) rather than
-        # replacing them. HA's state machine only pushes a state_changed
-        # event to the frontend when `old_state.attributes == new_attributes`
-        # is False (see core.py's async_set_internal) — if we handed it the
-        # live store list, that "old" snapshot would drift in sync with
-        # every later mutation (same object), making the comparison always
-        # come back equal and silently suppressing the update whenever the
-        # active count itself didn't also change. A fresh copy each time
-        # keeps the previous snapshot frozen, so the comparison is real.
-        self._attr_extra_state_attributes = {"items": copy.deepcopy(items)}
+        # Shallow per-item copy, not a live reference: store.py mutates
+        # entries in place (dismissed_at, insert/remove on the same list)
+        # rather than replacing them. HA's state machine only pushes a
+        # state_changed event to the frontend when `old_state.attributes ==
+        # new_attributes` is False (see core.py's async_set_internal): if we
+        # handed it the live store list, that "old" snapshot would drift in
+        # sync with every later mutation (same object), making the
+        # comparison always come back equal and silently suppressing the
+        # update whenever the active count itself didn't also change. A
+        # fresh dict per item keeps the previous snapshot's top-level fields
+        # (dismissed_at included) frozen, so the comparison is real -- a
+        # full deepcopy isn't needed for that, since `data` (each entry's
+        # nested companion-app/automation payload) is only ever set once at
+        # creation and never mutated afterward, so sharing it by reference
+        # across snapshots is safe.
+        self._attr_extra_state_attributes = {"items": [dict(item) for item in items]}
         self.async_write_ha_state()

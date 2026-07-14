@@ -1,4 +1,4 @@
-"""Tests for diagnostics.py — aggregates only, never notification content."""
+"""Tests for diagnostics.py: aggregates only, never notification content."""
 from __future__ import annotations
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry

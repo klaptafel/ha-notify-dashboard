@@ -1,6 +1,6 @@
 // notify-dashboard-badge.js
 //
-// PHASE 2 — not implemented yet, and deliberately not registered via
+// PHASE 2: not implemented yet, and deliberately not registered via
 // frontend.add_extra_js_url in __init__.py.
 //
 // Design:

@@ -1,7 +1,7 @@
 """Guards against strings.json/translations/en.json drifting apart.
 
 HA's runtime translation loader (homeassistant.helpers.translation) never
-reads strings.json directly for a custom integration — only
+reads strings.json directly for a custom integration, only
 translations/<lang>.json. strings.json is what hassfest/HACS validate and
 what a human reads as the canonical source, but without a matching
 translations/en.json, English users see raw keys like "mirror_dismiss_to"
@@ -32,7 +32,7 @@ async def test_english_config_and_options_translations_resolve(hass):
         == "Also clear notifications on"
     )
     # error must be a sibling of step (like abort), not nested inside a
-    # step's own dict — hassfest's data-entry-flow schema has no "error" key
+    # step's own dict: hassfest's data-entry-flow schema has no "error" key
     # inside an individual step and rejects it as an unknown key.
     assert (
         config["component.notify_dashboard.config.error.invalid_mirror_target"]

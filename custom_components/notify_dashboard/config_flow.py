@@ -2,7 +2,7 @@
 
 Only handles the integration config (mirror_dismiss_to) via the UI. The
 `notify.dashboard` service itself keeps running through YAML (`notify: -
-platform: notify_dashboard`) — that's a limitation of the legacy notify
+platform: notify_dashboard`): that's a limitation of the legacy notify
 platform itself, not something a config entry can fix: legacy notify
 services are set up via async_setup_platform straight from YAML, entirely
 outside the config-entry lifecycle, so a config entry has nothing to hook
@@ -32,16 +32,16 @@ from .const import (
 def _mirror_dismiss_options(hass: HomeAssistant) -> list[dict[str, str]]:
     """List every valid mirror_dismiss_to target: both notify *entities*
     (modern NotifyEntity-based integrations, dispatched via the generic
-    notify.send_message action) and legacy notify *services* — a service
+    notify.send_message action) and legacy notify *services*: a service
     registered directly under the notify domain, with no entity at all, the
     only way a YAML-defined `notify: - platform: group` (or any other
     BaseNotificationService-based integration, including this one) can be
-    reached. An entity selector alone can never show the latter — they
+    reached. An entity selector alone can never show the latter: they
     aren't entities, so they'd never appear there regardless of anything
     else (confirmed: this isn't fixed by restarting HA either).
 
     Entity ids always contain a dot (`notify.xxx`); legacy service names
-    never do (`xxx`) — is_mirror_entity in const.py is the shared rule
+    never do (`xxx`): is_mirror_entity in const.py is the shared rule
     __init__.py's dispatch later uses to tell them apart.
     """
     entity_options = [
@@ -58,7 +58,7 @@ def _mirror_dismiss_options(hass: HomeAssistant) -> list[dict[str, str]]:
 
 def _mirror_dismiss_schema(hass: HomeAssistant, default: list[str]) -> vol.Schema:
     # Deliberately just the selector, no vol.All(..., [validate_mirror_target])
-    # wrapping — that shape validates fine on submit, but HA's
+    # wrapping: that shape validates fine on submit, but HA's
     # voluptuous_serialize.convert() (used to send the form itself to the
     # frontend on every render, not just on submit) has no case for a bare
     # list-of-callables and raises "Unable to convert schema" for it,
@@ -84,7 +84,7 @@ def _invalid_mirror_targets(values: list[str]) -> bool:
     """True if any entry fails validate_mirror_target.
 
     custom_value on the selector above lets a user type something not in
-    the dropdown (e.g. a target that isn't set up yet) — but the selector
+    the dropdown (e.g. a target that isn't set up yet), but the selector
     itself validates nothing about *what* was typed, so this still needs to
     run by hand on submit, same rules as the YAML path in __init__.py's
     CONFIG_SCHEMA (confirmed empirically: the select selector passes
@@ -111,7 +111,7 @@ class NotifyDashboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        # One instance is enough — multiple config entries wouldn't add anything.
+        # One instance is enough: multiple config entries wouldn't add anything.
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
 
@@ -131,7 +131,7 @@ class NotifyDashboardConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class NotifyDashboardOptionsFlow(config_entries.OptionsFlow):
     """Lets mirror_dismiss_to be changed later via 'Configure'.
 
-    Note: no own __init__ that sets self.config_entry — recent HA versions
+    Note: no own __init__ that sets self.config_entry; recent HA versions
     make that a read-only property that the config_entries module already
     populates before async_step_init is called. Assigning it yourself raises
     'property has no setter'.

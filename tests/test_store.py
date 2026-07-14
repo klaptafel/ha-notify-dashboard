@@ -1,4 +1,4 @@
-"""Tests for NotifyDashboardStore — the integration's core business logic."""
+"""Tests for NotifyDashboardStore: the integration's core business logic."""
 from __future__ import annotations
 
 import time
@@ -70,7 +70,7 @@ async def test_store_restores_persisted_data(hass, hass_storage):
 
 async def test_store_discards_pre_unification_data_instead_of_crashing(hass, hass_storage):
     """The old notifications/live_activities/dismissed shape (from a
-    version that was never actually released) has no "items" key at all —
+    version that was never actually released) has no "items" key at all:
     async_load must not crash on it, just start fresh."""
     hass_storage[STORAGE_KEY] = {
         "version": 1,
@@ -134,7 +134,7 @@ async def test_add_notification_newest_first(loaded_store):
 
 
 async def test_add_notification_does_not_replace_dismissed_entry_with_same_tag(loaded_store):
-    """Tag-replace only ever touches a currently-active entry — an old,
+    """Tag-replace only ever touches a currently-active entry: an old,
     already-dismissed entry with the same tag stays in history untouched,
     it's just not the one that gets replaced."""
     await loaded_store.async_add_notification("T1", "M1", {"tag": "dishwasher"})
@@ -193,7 +193,7 @@ async def test_upsert_live_activity_reusing_tag_of_dismissed_one_has_no_id_colli
     loaded_store,
 ):
     """A live activity's id is its own tag (so dismiss-by-tag keeps
-    working) — starting a new one under a tag whose previous run was
+    working): starting a new one under a tag whose previous run was
     already dismissed (and so still lingers in history) must not leave two
     entries sharing that id, or id-keyed lookups (dismiss-by-id, the
     frontend's per-row identity) get confused about which one is real."""
@@ -212,8 +212,8 @@ async def test_upsert_live_activity_reusing_tag_of_dismissed_one_has_no_id_colli
 
 async def test_upsert_live_activity_progress_minus_one_is_not_special(loaded_store):
     """progress: -1 isn't a documented companion-app sentinel (confirmed
-    against the actual docs — the real way to end a live activity is
-    clear_notification + tag, see async_clear_by_tag) — it's stored as
+    against the actual docs: the real way to end a live activity is
+    clear_notification + tag, see async_clear_by_tag), it's stored as
     ordinary data like any other progress value, not treated as "done"."""
     await loaded_store.async_upsert_live_activity(
         "T", "M", {"tag": "job1", "live_update": True, "progress": -1}
@@ -292,7 +292,7 @@ async def test_dismiss_persistent_notification_raises(loaded_store):
 
 
 async def test_dismiss_persistent_live_activity_still_dismissable(loaded_store):
-    """persistent only blocks manual dismiss for notifications — a live
+    """persistent only blocks manual dismiss for notifications: a live
     activity stays dismissable via the close button regardless."""
     await loaded_store.async_upsert_live_activity(
         "T", "M", {"tag": "job1", "live_update": True, "persistent": True}
@@ -311,7 +311,7 @@ async def test_dismiss_unknown_id_raises(loaded_store):
 
 
 async def test_dismiss_already_dismissed_id_is_idempotent_noop(loaded_store):
-    """A second dismiss of the same (already-inactive) id must not raise —
+    """A second dismiss of the same (already-inactive) id must not raise:
     two independent callers can legitimately race to dismiss the same
     item (e.g. the card's own fallback dismiss vs. an automation's own
     dismiss for the same action button)."""
@@ -350,7 +350,7 @@ async def test_dismiss_all_leaves_live_activities_untouched(loaded_store):
     assert active_tags == {"job1"}
 
 
-# --- expiry math (_cleanup) — no clock patching needed, timestamps precomputed ---
+# --- expiry math (_cleanup): no clock patching needed, timestamps precomputed ---
 
 
 async def test_cleanup_expires_by_per_item_timeout(loaded_store):
@@ -364,7 +364,7 @@ async def test_cleanup_expires_by_per_item_timeout(loaded_store):
 
 async def test_cleanup_handles_string_timeout_from_templated_automation(loaded_store):
     """timeout sometimes arrives as a string (e.g. an automation template
-    that didn't cast it) — must not crash _cleanup's created_at + timeout
+    that didn't cast it): must not crash _cleanup's created_at + timeout
     math; a numeric string is honored as a real timeout."""
     await loaded_store.async_add_notification("T", "M", {"tag": "t1", "timeout": "100"})
     entry = loaded_store.data["items"][0]
@@ -404,7 +404,7 @@ async def test_cleanup_expires_stale_live_activity(loaded_store):
 async def test_cleanup_hard_cap_purges_dismissed_entry(loaded_store):
     """The MAX_ITEMS cap is the one thing that actually drops an entry
     outright. Here the oldest entry is already dismissed, so it's exactly
-    who _apply_cap would pick anyway — see the next test for a case where
+    who _apply_cap would pick anyway; see the next test for a case where
     preferring dismissed entries actually changes the outcome."""
     await loaded_store.async_add_notification("T", "M", {"tag": "oldest"})
     await loaded_store.async_dismiss(loaded_store.data["items"][0]["id"])
@@ -417,7 +417,7 @@ async def test_cleanup_hard_cap_purges_dismissed_entry(loaded_store):
 
 async def test_cleanup_hard_cap_prefers_evicting_dismissed_over_active(loaded_store):
     """A dismissed entry gets evicted before an active one, even when the
-    active entry is positionally older — active state is protected as long
+    active entry is positionally older: active state is protected as long
     as there's a dismissed entry available to sacrifice instead."""
     await loaded_store.async_add_notification("T", "M", {"tag": "old_active"})
     await loaded_store.async_add_notification("T", "M", {"tag": "recent_dismissed"})
@@ -431,7 +431,7 @@ async def test_cleanup_hard_cap_prefers_evicting_dismissed_over_active(loaded_st
     assert len(loaded_store.data["items"]) == MAX_ITEMS
 
 
-# --- periodic cleanup timer — needs both clocks frozen (time.time() AND dt_util.utcnow()) ---
+# --- periodic cleanup timer: needs both clocks frozen (time.time() AND dt_util.utcnow()) ---
 
 
 async def test_periodic_cleanup_fires_and_saves(hass):
@@ -452,7 +452,7 @@ async def test_periodic_cleanup_fires_and_saves(hass):
 
 async def test_periodic_cleanup_dispatches_for_untagged_expiry(hass):
     """Regression test: the periodic timer used to gate its save/dispatch
-    on _cleanup()'s tag list being non-empty — an untagged notification
+    on _cleanup()'s tag list being non-empty: an untagged notification
     still gets dismissed in memory, but without a tag it was silently
     dropped from that list, so the sensor never re-published and the card
     only ever caught up on an unrelated page refresh."""
@@ -463,7 +463,7 @@ async def test_periodic_cleanup_dispatches_for_untagged_expiry(hass):
         await store.async_load()
         try:
             await store.async_add_notification("T", "M", {"timeout": 5})  # no tag
-            signals.clear()  # the add itself also dispatches — isolate the periodic tick
+            signals.clear()  # the add itself also dispatches, isolate the periodic tick
             freezer.tick(timedelta(seconds=10))
             freezer.tick(CLEANUP_INTERVAL)
             async_fire_time_changed(hass, dt_util.utcnow())
@@ -499,7 +499,7 @@ async def test_start_periodic_cleanup_is_idempotent(hass):
     store._unsub_periodic_cleanup()
 
 
-# --- on_removed — mirror_dismiss_to forwarding for automatic expiry ---
+# --- on_removed: mirror_dismiss_to forwarding for automatic expiry ---
 # (a notification that times out disappears from the dashboard exactly
 # like an explicit dismiss does, so it should get the same treatment)
 
@@ -554,7 +554,7 @@ async def test_on_expired_not_called_during_async_load_startup_cleanup(
 ):
     """The callback's caller (hass.data[DOMAIN]) isn't populated yet at
     this point in real setup, so async_load's own cleanup pass must not
-    invoke it — only later writes/the periodic timer should."""
+    invoke it: only later writes/the periodic timer should."""
     expired_at = time.time() - (MAX_AGE_DAYS * 86400 + 10)
     hass_storage[STORAGE_KEY] = {
         "version": 1,
@@ -593,7 +593,7 @@ async def test_on_expired_called_from_periodic_timer(hass, loaded_store_factory)
         on_expired.assert_awaited_once_with(["t1"])
 
 
-# --- dismissed history — items stay in the list after dismissal, flagged
+# --- dismissed history: items stay in the list after dismissal, flagged
 # via dismissed_at/dismiss_reason instead of being removed ---
 
 
@@ -633,7 +633,7 @@ async def test_clear_by_tag_records_clear_notification_reason_for_both_kinds(loa
 
 
 async def test_dismissed_entries_stay_newest_first_by_original_position(loaded_store):
-    """Dismissing flips fields in place — it doesn't reposition the entry,
+    """Dismissing flips fields in place: it doesn't reposition the entry,
     so list order still reflects when it was created/last updated, not when
     it happened to get dismissed."""
     await loaded_store.async_add_notification("T1", "M1", {"tag": "a"})

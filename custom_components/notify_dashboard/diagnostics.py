@@ -1,6 +1,6 @@
 """Diagnostics support for Notify Dashboard.
 
-Reports config + aggregate counts/timestamps only — deliberately never the
+Reports config + aggregate counts/timestamps only: deliberately never the
 actual title/message/data content of notifications or live activities.
 Diagnostics downloads are a live, user-facing feature (Settings > Devices &
 Services > integration > "Download diagnostics") that people commonly paste
@@ -27,7 +27,7 @@ async def async_get_config_entry_diagnostics(
     domain_data = get_domain_data(hass)
     items = domain_data["store"].data["items"]
 
-    # Single pass — these three buckets are mutually exclusive by
+    # Single pass: these three buckets are mutually exclusive by
     # construction (is_active x is_live_update), so no need to filter the
     # same list three separate times.
     notifications: list[Entry] = []
@@ -67,7 +67,7 @@ async def async_get_config_entry_diagnostics(
         "dismissed": {
             "count": len(dismissed),
             # dismissed only ever holds entries where is_active() is False,
-            # i.e. dismissed_at is guaranteed set — the cast just tells the
+            # i.e. dismissed_at is guaranteed set: the cast just tells the
             # type checker what's already true at runtime, not a real check.
             "newest_dismissed_at": max(
                 (cast(float, d["dismissed_at"]) for d in dismissed), default=None

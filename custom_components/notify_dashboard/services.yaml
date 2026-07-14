@@ -18,7 +18,7 @@ fire_action:
   name: Fire action
   description: >-
     Fires a mobile_app_notification_action event (same shape as the
-    companion app). Used internally by the card on an action tap — a
+    companion app). Used internally by the card on an action tap: a
     separate, admin-independent endpoint instead of the fire_event
     websocket command, which only admin users are allowed to call.
   fields:

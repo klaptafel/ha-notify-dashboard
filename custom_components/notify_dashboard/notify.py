@@ -1,6 +1,6 @@
 """Notify platform for Notify Dashboard.
 
-Legacy BaseNotificationService, not the modern NotifyEntity — NotifyEntity's
+Legacy BaseNotificationService, not the modern NotifyEntity: NotifyEntity's
 async_send_message(message, title) only takes those two arguments, with no
 way to receive `data`/`target` at all, and this integration depends on
 `data` entirely (tag-based replace/dismiss, actions, live-activity fields
@@ -49,7 +49,7 @@ class DashboardNotificationService(BaseNotificationService):
         title = kwargs.get(ATTR_TITLE)
         data = kwargs.get(ATTR_DATA) or {}
 
-        # Command messages are instructions, not content — never store them.
+        # Command messages are instructions, not content: never store them.
         if message in COMMAND_MESSAGES:
             if message == "clear_notification":
                 tag = data.get("tag")
