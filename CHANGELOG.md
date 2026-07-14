@@ -10,6 +10,7 @@ All notable changes to this project are documented here. Format loosely follows 
 - The editor's duplicated tags/groups filter-section markup consolidated into a shared `_renderFilterPair()` helper.
 - `_renderRow()` (a ~320-line method) split into `_buildRowIcon`/`_buildRowContent`/`_appendDebugRow`/`_buildRowDismissArea`/`_buildRowActions`; no behavior change.
 - `sensor.py`'s `native_value`/`extra_state_attributes` update now copies each item shallowly (`[dict(item) for item in items]`) instead of a full `copy.deepcopy()`; each item's nested `data` payload is only ever set once at creation and never mutated afterward, so a shallow per-item copy already preserves the frozen-snapshot guarantee the deepcopy was there for. No behavior change.
+- Removed the unused `frontend/notify-dashboard-badge.js` design-note stub (a never-built, never-registered "Phase 2" idea); moved to this project's entry in the repo-wide `FUTURE.md` instead.
 
 ## [1.2.0] - 2026-07-13
 
