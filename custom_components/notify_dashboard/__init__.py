@@ -28,7 +28,9 @@ from homeassistant.core import Event, HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv, discovery
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.loader import async_get_integration
 
 from .const import (
     ATTR_ACTION,
@@ -61,12 +63,38 @@ class NotifyDashboardData(TypedDict):
 
     store: NotifyDashboardStore
     mirror_dismiss_to: list[str]
+    # manifest.json's own version/documentation, fetched once in
+    # _async_ensure_core -- sensor.py's own device_info() below reads these
+    # for the device info page's own software version and "Visit" link.
+    sw_version: str
+    configuration_url: str | None
 
 
 def get_domain_data(hass: HomeAssistant) -> NotifyDashboardData:
     """Typed accessor for hass.data[DOMAIN]: one cast at the Any/typed
     boundary here, real key/type checking at every call site using this."""
     return cast(NotifyDashboardData, hass.data[DOMAIN])
+
+
+def device_info(hass: HomeAssistant) -> DeviceInfo:
+    """The single virtual device every entity this integration creates
+    attaches to -- direct user feedback (cross-project), 2026-08-07, wanting
+    this same device-info block (including the "Visit" link) across every
+    integration, not just newer ones. entry_type=SERVICE: no physical
+    hardware, same reasoning as ha-update-manager's own device.py.
+    configuration_url points at the GitHub repo (manifest.json's own
+    `documentation` field) rather than an internal HA path: unlike
+    ha-update-manager, this integration has no sidebar panel of its own to
+    link to instead."""
+    domain_data = get_domain_data(hass)
+    return DeviceInfo(
+        identifiers={(DOMAIN, DOMAIN)},
+        name="Notify Dashboard",
+        manufacturer="Notify Dashboard",
+        entry_type=DeviceEntryType.SERVICE,
+        sw_version=domain_data["sw_version"],
+        configuration_url=domain_data["configuration_url"],
+    )
 
 
 CONFIG_SCHEMA = vol.Schema(
@@ -157,10 +185,15 @@ async def _async_ensure_core(hass: HomeAssistant, config: ConfigType) -> None:
             await asyncio.gather(*(_async_mirror_clear(hass, tag) for tag in tags))
 
     store = NotifyDashboardStore(hass, on_removed=_on_removed)
+    # For device_info() above -- fetched once here (this whole function only
+    # ever runs once, see its own docstring), not per-entity.
+    integration = await async_get_integration(hass, DOMAIN)
 
     data: NotifyDashboardData = {
         "store": store,
         "mirror_dismiss_to": [],
+        "sw_version": str(integration.version),
+        "configuration_url": integration.documentation,
     }
     hass.data[DOMAIN] = data
 

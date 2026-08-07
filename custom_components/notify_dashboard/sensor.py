@@ -13,7 +13,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
-from . import get_domain_data
+from . import device_info, get_domain_data
 from .const import DOMAIN, SIGNAL_UPDATE
 from .store import is_active
 
@@ -32,7 +32,19 @@ class NotifyDashboardSensor(SensorEntity):
     """Exposes the unified item list as an attribute for the card."""
 
     _attr_has_entity_name = True
+    # None, not the "dashboard" translation_key's own "Notify Dashboard"
+    # name -- now that this entity has a device (see __init__.py's own
+    # device_info(), added 2026-08-07), it's that device's only entity, so
+    # this is the device's own unnamed "main feature" entity, same pattern
+    # ha-update-manager's own switch.py already uses (that entity's own
+    # comment has the full reasoning: has_entity_name=True + _attr_name=None
+    # + translation_key kept purely for icons.json's own lookup is safe,
+    # confirmed against Entity._name_internal's real source). Without this,
+    # the entity's own translated name ("Notify Dashboard") would read as a
+    # redundant "Notify Dashboard Notify Dashboard" wherever HA shows the
+    # full device+entity name.
     _attr_translation_key = "dashboard"
+    _attr_name = None
     _attr_unique_id = f"{DOMAIN}_sensor"
     _attr_should_poll = False
     # `items` is meant to be read live off the state machine by the card,
@@ -47,6 +59,7 @@ class NotifyDashboardSensor(SensorEntity):
 
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass
+        self._attr_device_info = device_info(hass)
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(async_dispatcher_connect(self.hass, SIGNAL_UPDATE, self._handle_update))

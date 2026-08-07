@@ -56,7 +56,7 @@ async def test_setup_platform_adds_one_sensor(hass):
 
 
 async def test_sensor_entity_attrs(hass, loaded_store):
-    hass.data[DOMAIN] = {"store": loaded_store}
+    hass.data[DOMAIN] = {"store": loaded_store, "sw_version": "0.0.0", "configuration_url": None}
     sensor = await _add_sensor(hass)
     assert sensor.unique_id == f"{DOMAIN}_sensor"
     assert sensor.has_entity_name is True
@@ -65,7 +65,7 @@ async def test_sensor_entity_attrs(hass, loaded_store):
 
 async def test_sensor_populates_state_on_add(hass, loaded_store):
     await loaded_store.async_add_notification("T", "M", {"tag": "t1"})
-    hass.data[DOMAIN] = {"store": loaded_store}
+    hass.data[DOMAIN] = {"store": loaded_store, "sw_version": "0.0.0", "configuration_url": None}
 
     sensor = await _add_sensor(hass)
     state = hass.states.get(sensor.entity_id)
@@ -79,7 +79,7 @@ async def test_sensor_state_counts_active_only_not_dismissed(hass, loaded_store)
     entries stick around in `items` for history, but shouldn't inflate it."""
     await loaded_store.async_add_notification("T", "M", {"tag": "t1"})
     await loaded_store.async_dismiss(loaded_store.data["items"][0]["id"])
-    hass.data[DOMAIN] = {"store": loaded_store}
+    hass.data[DOMAIN] = {"store": loaded_store, "sw_version": "0.0.0", "configuration_url": None}
 
     sensor = await _add_sensor(hass)
     state = hass.states.get(sensor.entity_id)
@@ -89,7 +89,7 @@ async def test_sensor_state_counts_active_only_not_dismissed(hass, loaded_store)
 
 
 async def test_sensor_updates_reactively_via_dispatcher(hass, loaded_store):
-    hass.data[DOMAIN] = {"store": loaded_store}
+    hass.data[DOMAIN] = {"store": loaded_store, "sw_version": "0.0.0", "configuration_url": None}
     sensor = await _add_sensor(hass)
     assert hass.states.get(sensor.entity_id).state == "0"
 
@@ -100,7 +100,7 @@ async def test_sensor_updates_reactively_via_dispatcher(hass, loaded_store):
 async def test_sensor_no_update_without_signal(hass, loaded_store):
     """Without a dispatcher signal (or initial add), state must not change:
     should_poll is False, so nothing should refresh it on its own."""
-    hass.data[DOMAIN] = {"store": loaded_store}
+    hass.data[DOMAIN] = {"store": loaded_store, "sw_version": "0.0.0", "configuration_url": None}
     sensor = await _add_sensor(hass)
     assert hass.states.get(sensor.entity_id).state == "0"
 

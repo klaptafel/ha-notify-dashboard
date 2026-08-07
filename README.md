@@ -29,7 +29,8 @@ This integration isn't in the HACS default store yet, so add it as a custom repo
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=klaptafel&repository=ha-notify-dashboard&category=integration)
 
-1. In HACS, add `klaptafel/ha-notify-dashboard` as a custom repository (category: Integration).
+1. In HACS, add `https://github.com/klaptafel/ha-notify-dashboard` as a custom repository
+   (category: Integration).
 2. Install "Notify Dashboard" and restart Home Assistant.
 
 ---
@@ -118,6 +119,8 @@ A payload with `live_update: true` is tracked as a live activity instead of a re
 | `chronometer` / `when` / `when_relative` | Live activity | Live-ticking countdown/count-up under the title, updated client-side every second. |
 | `progress` / `progress_max` | Live activity | Progress bar with a live percentage; both fields required. |
 | `progress_indeterminate: true` | Live activity | Sliding indeterminate bar, used when there's no concrete `progress` to show. |
+| `progress_bar_direction` | Live activity | `increasing` (default, fills left-to-right) or `decreasing` (fills right-to-left, e.g. for remaining stock or a draining battery). |
+| `background_color` / `text_color` | Live activity | On the phone these style the lockscreen widget itself; there's no separate surface here, so `background_color` becomes this row's exact background (full color/opacity, not blended like `color`'s wash, and wins over it when both are set) and `text_color` becomes this row's text color. |
 
 Clear a notification or live activity the same way the app does:
 

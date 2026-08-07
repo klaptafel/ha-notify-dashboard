@@ -4,7 +4,7 @@
 // live activities together, told apart by data.live_update; active and
 // recently-dismissed entries alike, told apart by dismissed_at).
 //
-// Status: fase 1, including a visual editor (tab skeleton taken 1-to-1 from
+// Status: phase 1, including a visual editor (tab skeleton taken 1-to-1 from
 // package-tracker-card: tab bar, ha-switch/ha-form rows, config-changed +
 // echo protection by comparing against the last-fired config).
 // Design decisions are implemented 1-to-1: no chevron/expand, always full
@@ -12,7 +12,7 @@
 // tag-replace = full replacement (so no client-side merge needed: the
 // backend already delivers complete entries).
 //
-// Fase 2, partially: progress bar (progress/progress_max, with percentage),
+// Phase 2, partially: progress bar (progress/progress_max, with percentage),
 // chronometer/when, and critical_text (live activities only: shares the
 // status bar chip slot with chronometer, which wins when both are set,
 // same as the companion app). progress_indeterminate is picked up too.
@@ -281,6 +281,12 @@ const CARD_CSS = `
   }
   .progress-wrap .progress-feature { flex: 1; width: auto; }
   .progress-fill { height: 100%; border-radius: inherit; transition: width 300ms ease-in-out; }
+  /* progress_bar_direction: 'decreasing' -- a plain block box with an
+     explicit width and no margin-right auto-shifts to the right edge of
+     its (non-flex) .progress-feature container, so the visible fill stays
+     anchored there as its width shrinks, instead of shrinking away from
+     the left like the default 'increasing' fill does. */
+  .progress-fill.decreasing { margin-left: auto; }
   /* progress_indeterminate: no known percentage, so a sliding segment
      instead of a width-based fill: same track/box as the regular bar. */
   .progress-fill.indeterminate {
@@ -699,9 +705,30 @@ class NotifyDashboardCard extends HTMLElement {
     const isDismissed = !!item.dismissed_at;
 
     const row = mk('div', 'row' + (isDismissed ? ' row-ghost' : ''));
-    // Low-opacity wash, not a solid fill: see the .row CSS comment on why
-    // an arbitrary user-supplied color stays off of text/large surfaces.
-    if (data.color) row.style.background = `color-mix(in srgb, ${cssColor(data.color)} 12%, transparent)`;
+    // background_color (live activity only, mirrors the companion app's own
+    // lockscreen background) is applied exactly as given, full color/
+    // opacity, not run through the `color` wash below -- direct user
+    // feedback, 2026-07-28: unlike `color` (a decorative accent over
+    // whatever the row would otherwise look like), background_color is the
+    // sender's own deliberate, complete background choice for this exact
+    // surface (paired with text_color below for contrast), so diluting it
+    // through the same low-opacity mix `color` uses would defeat that
+    // choice. Only applied when there's no explicit background_color:
+    // that's what the low-opacity wash exists for, see the .row CSS comment
+    // on why an arbitrary user-supplied `color` stays off of text/large
+    // surfaces otherwise.
+    if (item._kind === 'live_activities' && data.background_color) {
+      row.style.background = cssColor(data.background_color);
+    } else if (data.color) {
+      row.style.background = `color-mix(in srgb, ${cssColor(data.color)} 12%, transparent)`;
+    }
+    // text_color, unlike `color`/background_color, is genuinely meant as a
+    // foreground text color by the companion app itself ("Tekstkleur op het
+    // lockscreen"), not a decorative wash -- applying it literally here
+    // doesn't run into the same arbitrary-color-on-text risk the .row CSS
+    // comment above warns about for `color`. Live activity only, same as
+    // background_color.
+    if (item._kind === 'live_activities' && data.text_color) row.style.color = cssColor(data.text_color);
     const main = mk('div', 'row-main');
 
     const iconWrap = this._buildRowIcon(icon, color, url);
@@ -978,7 +1005,7 @@ class NotifyDashboardCard extends HTMLElement {
     } else if (hasProgress) {
       const pct = Math.max(0, Math.min(100, (data.progress / data.progress_max) * 100));
       const bar = mk('div', 'progress-feature');
-      const fill = mk('div', 'progress-fill');
+      const fill = mk('div', 'progress-fill' + (data.progress_bar_direction === 'decreasing' ? ' decreasing' : ''));
       fill.style.width = `${pct}%`;
       fill.style.background = color;
       bar.appendChild(fill);
