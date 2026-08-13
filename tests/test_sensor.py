@@ -44,7 +44,16 @@ async def _add_sensor(hass) -> NotifyDashboardSensor:
     return entities[0]
 
 
-async def test_setup_platform_adds_one_sensor(hass):
+async def test_setup_platform_adds_one_sensor(hass, loaded_store):
+    # hass.data[DOMAIN] populated the same way every other test in this file
+    # already does -- NotifyDashboardSensor.__init__ calls device_info(hass)
+    # unconditionally (see sensor.py), which needs it. This test used to
+    # skip that setup and still pass, relying on hass.data[DOMAIN] having
+    # been left populated by test isolation/ordering quirks rather than on
+    # anything this test actually set up itself; a pytest-homeassistant-
+    # custom-component bump (0.13.346 -> 0.13.354) exposed that as a real
+    # KeyError once that incidental state was no longer there to lean on.
+    hass.data[DOMAIN] = {"store": loaded_store, "sw_version": "0.0.0", "configuration_url": None}
     entities = []
 
     def add_entities(new_entities, update_before_add=False):
