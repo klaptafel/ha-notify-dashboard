@@ -31,7 +31,7 @@ from custom_components.notify_dashboard.store import entry_tag, is_active
 
 
 @pytest.fixture(autouse=True)
-async def _setup(hass, hass_http, frontend_extra_js_urls, no_discovery):
+async def _setup(hass, hass_http, frontend_extra_js_urls):
     await async_setup(hass, {})
     await hass.async_block_till_done()
 

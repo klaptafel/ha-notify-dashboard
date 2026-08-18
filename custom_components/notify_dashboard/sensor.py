@@ -8,23 +8,29 @@ changes, no polling.
 from __future__ import annotations
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from . import device_info, get_domain_data
 from .const import DOMAIN, SIGNAL_UPDATE
 from .store import is_active
 
 
-async def async_setup_platform(
+async def async_setup_entry(
     hass: HomeAssistant,
-    config: ConfigType,
+    entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
-    discovery_info: DiscoveryInfoType | None = None,
 ) -> None:
-    """Set up the Notify Dashboard sensor."""
+    """Set up the Notify Dashboard sensor -- forwarded from __init__.py's
+    own async_setup_entry, not the legacy discovery-platform setup this
+    used to be (found live, 2026-08-18: Home Assistant warns that an
+    entity attaching a device with no config entry behind it will stop
+    working in 2027.8.0). No dependency on `entry` itself beyond HA's own
+    plumbing requiring it -- device_info()/get_domain_data() still read
+    hass.data[DOMAIN], set up once by _async_ensure_core regardless of
+    which path (YAML or the config entry) triggered it."""
     async_add_entities([NotifyDashboardSensor(hass)])
 
 

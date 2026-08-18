@@ -5,11 +5,18 @@ Two independent setup paths come together here:
   prefers to keep everything in YAML, and for the mandatory `notify: -
   platform: notify_dashboard` line (which can't go through a config entry
   anyway, see config_flow.py).
-- Config entry (added via the UI): only handles `mirror_dismiss_to`,
-  adjustable via "Configure" without a restart.
+- Config entry (added via the UI): handles `mirror_dismiss_to`, adjustable
+  via "Configure" without a restart, and (since 2026-08-18) is now also the
+  only way the sensor gets set up -- Home Assistant now warns (and will
+  stop allowing entirely in 2027.8.0) an entity attaching a device with no
+  config entry behind it, which the sensor's own discovery-platform setup
+  could never provide. The sensor simply doesn't exist for a YAML-only
+  setup with no config entry at all; add the integration via the UI to get
+  it (no migration path back-filled for that case, direct user feedback).
 
-The core (store, services, frontend, sensor) is only ever set up once,
-regardless of which path comes first.
+The core (store, services, frontend) is still only ever set up once,
+regardless of which path comes first -- only the sensor now specifically
+requires the config entry path.
 """
 from __future__ import annotations
 
@@ -26,7 +33,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import Event, HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
-from homeassistant.helpers import config_validation as cv, discovery
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.typing import ConfigType
@@ -125,7 +132,7 @@ FIRE_ACTION_SCHEMA = vol.Schema(
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up via YAML (`notify_dashboard:` key): optional."""
-    await _async_ensure_core(hass, config)
+    await _async_ensure_core(hass)
 
     yaml_conf = config.get(DOMAIN, {})
     if yaml_conf:
@@ -142,12 +149,15 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up via the UI (config entry): handles mirror_dismiss_to."""
-    await _async_ensure_core(hass, {})
+    """Set up via the UI (config entry): handles mirror_dismiss_to, and
+    (since 2026-08-18) is now the only path that creates the sensor -- see
+    this module's own docstring for why."""
+    await _async_ensure_core(hass)
 
     get_domain_data(hass)["mirror_dismiss_to"] = entry.options.get(CONF_MIRROR_DISMISS_TO, [])
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+    await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
     return True
 
 
@@ -155,7 +165,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Remove the config entry: the core (store/services/frontend) stays in
     place as long as the YAML platform line (`notify: - platform:
     notify_dashboard`) is still active; that can't be cleaned up separately
-    from this entry."""
+    from this entry. The sensor, forwarded to only from this exact entry
+    (see async_setup_entry above), is unloaded here instead."""
+    if not await hass.config_entries.async_unload_platforms(entry, ["sensor"]):
+        return False
     get_domain_data(hass)["mirror_dismiss_to"] = []
     return True
 
@@ -165,9 +178,12 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
     get_domain_data(hass)["mirror_dismiss_to"] = entry.options.get(CONF_MIRROR_DISMISS_TO, [])
 
 
-async def _async_ensure_core(hass: HomeAssistant, config: ConfigType) -> None:
-    """Set up the store, services, frontend, and sensor exactly once:
-    idempotent, regardless of whether YAML or the config entry arrives first."""
+async def _async_ensure_core(hass: HomeAssistant) -> None:
+    """Set up the store, services, and frontend exactly once: idempotent,
+    regardless of whether YAML or the config entry arrives first. The
+    sensor is deliberately not part of this anymore (see this module's own
+    docstring) -- it's forwarded to only from async_setup_entry, since it
+    needs a real config entry to attach its device to."""
     if DOMAIN in hass.data:
         return
 
@@ -219,10 +235,6 @@ async def _async_ensure_core(hass: HomeAssistant, config: ConfigType) -> None:
         hass.async_create_task(_register_resource())
     else:
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _register_resource)
-
-    hass.async_create_task(
-        discovery.async_load_platform(hass, "sensor", DOMAIN, {}, config)
-    )
 
     async def handle_dismiss(call: ServiceCall) -> None:
         item_id = call.data[ATTR_ID]

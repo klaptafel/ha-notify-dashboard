@@ -28,9 +28,16 @@ from custom_components.notify_dashboard.const import (
 )
 
 
-async def test_setup_registers_store_services_and_discovery(
-    hass, hass_http, frontend_extra_js_urls, no_discovery
+async def test_setup_registers_store_and_services(
+    hass, hass_http, frontend_extra_js_urls
 ):
+    # No sensor assertion here anymore (found live, 2026-08-18): the sensor
+    # is no longer part of _async_ensure_core's own "core" set up by a plain
+    # async_setup(hass, {}) call at all -- it now only ever gets created via
+    # async_setup_entry's own platform-forward, see test_setup_entry_*
+    # elsewhere in this file for that. A YAML-only setup with no config
+    # entry genuinely has no sensor, deliberately (see __init__.py's own
+    # docstring).
     result = await async_setup(hass, {})
     assert result is True
 
@@ -41,18 +48,16 @@ async def test_setup_registers_store_services_and_discovery(
     assert hass.services.has_service(DOMAIN, SERVICE_DISMISS_ALL)
     assert hass.services.has_service(DOMAIN, SERVICE_FIRE_ACTION)
 
-    assert no_discovery == [("sensor", DOMAIN, {})]
-
 
 async def test_setup_yaml_config_sets_mirror_dismiss_to(
-    hass, hass_http, frontend_extra_js_urls, no_discovery
+    hass, hass_http, frontend_extra_js_urls
 ):
     await async_setup(hass, {DOMAIN: {"mirror_dismiss_to": ["notify.mobile_app"]}})
     assert hass.data[DOMAIN]["mirror_dismiss_to"] == ["notify.mobile_app"]
 
 
 async def test_setup_entry_sets_mirror_dismiss_to_from_options(
-    hass, hass_http, frontend_extra_js_urls, no_discovery
+    hass, hass_http, frontend_extra_js_urls
 ):
     entry = MockConfigEntry(
         domain=DOMAIN, options={"mirror_dismiss_to": ["notify.mobile_app"]}
@@ -65,7 +70,7 @@ async def test_setup_entry_sets_mirror_dismiss_to_from_options(
 
 
 async def test_dual_setup_yaml_then_entry_is_idempotent(
-    hass, hass_http, frontend_extra_js_urls, no_discovery
+    hass, hass_http, frontend_extra_js_urls
 ):
     await async_setup(hass, {})
     store_before = hass.data[DOMAIN]["store"]
@@ -78,7 +83,7 @@ async def test_dual_setup_yaml_then_entry_is_idempotent(
 
 
 async def test_dual_setup_entry_then_yaml_is_idempotent(
-    hass, hass_http, frontend_extra_js_urls, no_discovery
+    hass, hass_http, frontend_extra_js_urls
 ):
     entry = MockConfigEntry(domain=DOMAIN, options={})
     entry.add_to_hass(hass)
@@ -91,7 +96,7 @@ async def test_dual_setup_entry_then_yaml_is_idempotent(
 
 
 async def test_yaml_alongside_config_entry_warns_and_entry_wins(
-    hass, hass_http, frontend_extra_js_urls, no_discovery, caplog
+    hass, hass_http, frontend_extra_js_urls, caplog
 ):
     entry = MockConfigEntry(
         domain=DOMAIN, options={"mirror_dismiss_to": ["notify.from_entry"]}
@@ -106,7 +111,7 @@ async def test_yaml_alongside_config_entry_warns_and_entry_wins(
 
 
 async def test_unload_entry_clears_mirror_dismiss_to(
-    hass, hass_http, frontend_extra_js_urls, no_discovery
+    hass, hass_http, frontend_extra_js_urls
 ):
     entry = MockConfigEntry(
         domain=DOMAIN, options={"mirror_dismiss_to": ["notify.mobile_app"]}
@@ -120,7 +125,7 @@ async def test_unload_entry_clears_mirror_dismiss_to(
 
 
 async def test_options_update_reloads_mirror_dismiss_to(
-    hass, hass_http, frontend_extra_js_urls, no_discovery
+    hass, hass_http, frontend_extra_js_urls
 ):
     entry = MockConfigEntry(domain=DOMAIN, options={})
     entry.add_to_hass(hass)
@@ -138,7 +143,7 @@ async def test_options_update_reloads_mirror_dismiss_to(
 
 
 async def test_lovelace_yaml_mode_adds_extra_js_url(
-    hass, hass_http, frontend_extra_js_urls, no_discovery
+    hass, hass_http, frontend_extra_js_urls
 ):
     await async_setup(hass, {})
     await hass.async_block_till_done()
@@ -149,7 +154,7 @@ async def test_lovelace_yaml_mode_adds_extra_js_url(
 
 
 async def test_lovelace_storage_mode_creates_item(
-    hass, hass_http, fake_lovelace_storage, no_discovery
+    hass, hass_http, fake_lovelace_storage
 ):
     await async_setup(hass, {})
     await hass.async_block_till_done()
@@ -161,7 +166,7 @@ async def test_lovelace_storage_mode_creates_item(
 
 
 async def test_lovelace_storage_mode_updates_existing_item_on_version_change(
-    hass, hass_http, fake_lovelace_storage, no_discovery
+    hass, hass_http, fake_lovelace_storage
 ):
     fake_lovelace_storage.resources.items.append(
         {
@@ -181,7 +186,7 @@ async def test_lovelace_storage_mode_updates_existing_item_on_version_change(
 
 
 async def test_lovelace_storage_mode_leaves_up_to_date_item_untouched(
-    hass, hass_http, fake_lovelace_storage, no_discovery
+    hass, hass_http, fake_lovelace_storage
 ):
     from custom_components.notify_dashboard import _frontend_content_hash
 
@@ -208,7 +213,7 @@ async def test_lovelace_storage_mode_leaves_up_to_date_item_untouched(
 
 
 async def test_lovelace_registration_waits_for_started_event_when_not_running(
-    hass, hass_http, frontend_extra_js_urls, no_discovery
+    hass, hass_http, frontend_extra_js_urls
 ):
     hass.set_state(CoreState.not_running)
 

@@ -109,30 +109,6 @@ def fake_lovelace_storage(hass):
 
 
 @pytest.fixture
-def no_discovery(monkeypatch):
-    """Patch out discovery.async_load_platform for __init__.py tests.
-
-    _async_ensure_core fires this to load sensor.py via discovery, but
-    since notify_dashboard's manifest declares frontend as a dependency,
-    letting it run for real drags in a full frontend/websocket_api/lovelace
-    bootstrap cascade that fails on the missing hass_frontend package (same
-    root cause as hass_http/frontend_extra_js_urls above). That platform
-    load is already covered directly in test_sensor.py; here we only need
-    to confirm _async_ensure_core *asks* for it with the right arguments.
-    """
-    calls: list[tuple] = []
-
-    async def _fake_async_load_platform(hass, component, platform, discovered, hass_config):
-        calls.append((component, platform, discovered))
-
-    monkeypatch.setattr(
-        "custom_components.notify_dashboard.discovery.async_load_platform",
-        _fake_async_load_platform,
-    )
-    return calls
-
-
-@pytest.fixture
 async def loaded_store(hass):
     """A loaded NotifyDashboardStore with its periodic cleanup timer
     guaranteed to be unsubscribed on teardown.

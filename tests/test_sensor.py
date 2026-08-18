@@ -15,12 +15,23 @@ from datetime import timedelta
 
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_platform import EntityPlatform
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.notify_dashboard.const import DOMAIN, SIGNAL_UPDATE
 from custom_components.notify_dashboard.sensor import (
     NotifyDashboardSensor,
-    async_setup_platform,
+    async_setup_entry,
 )
+
+
+def _mock_entry(hass) -> MockConfigEntry:
+    # async_setup_entry itself never reads anything off `entry` (see its own
+    # docstring) -- this exists purely to match the real function signature
+    # HA's own platform-forwarding calls it with, same reasoning
+    # test_init.py's own MockConfigEntry usage already has.
+    entry = MockConfigEntry(domain=DOMAIN)
+    entry.add_to_hass(hass)
+    return entry
 
 
 async def _add_sensor(hass) -> NotifyDashboardSensor:
@@ -39,12 +50,12 @@ async def _add_sensor(hass) -> NotifyDashboardSensor:
     def add_entities(new_entities, update_before_add=False):
         entities.extend(new_entities)
 
-    await async_setup_platform(hass, {}, add_entities)
+    await async_setup_entry(hass, _mock_entry(hass), add_entities)
     await platform.async_add_entities(entities)
     return entities[0]
 
 
-async def test_setup_platform_adds_one_sensor(hass, loaded_store):
+async def test_setup_entry_adds_one_sensor(hass, loaded_store):
     # hass.data[DOMAIN] populated the same way every other test in this file
     # already does -- NotifyDashboardSensor.__init__ calls device_info(hass)
     # unconditionally (see sensor.py), which needs it. This test used to
@@ -59,7 +70,7 @@ async def test_setup_platform_adds_one_sensor(hass, loaded_store):
     def add_entities(new_entities, update_before_add=False):
         entities.extend(new_entities)
 
-    await async_setup_platform(hass, {}, add_entities)
+    await async_setup_entry(hass, _mock_entry(hass), add_entities)
     assert len(entities) == 1
     assert isinstance(entities[0], NotifyDashboardSensor)
 
