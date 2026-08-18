@@ -1209,12 +1209,14 @@ class NotifyDashboardCard extends HTMLElement {
 
     if (!items.length && !holding && this._config.hide_when_empty) {
       this.classList.add('hidden');
+      this._updateHiddenHostCard(true);
       this._teardownRows();
       this._root.innerHTML = '';
       this._containerKind = null;
       return;
     }
     this.classList.remove('hidden');
+    this._updateHiddenHostCard(false);
 
     if (!items.length && !holding) {
       this._teardownRows();
@@ -1253,6 +1255,25 @@ class NotifyDashboardCard extends HTMLElement {
     }
 
     this._syncRows(items, layout);
+  }
+
+  // :host(.hidden) and getCardSize()'s weight-0 only affect this card's own
+  // element, not the real <hui-card> ancestor HA wraps it in, which stays a
+  // present grid item and still leaves a masonry gap (see Bubble-Card#2535
+  // for the same fix on their popup host). Previous inline display value is
+  // saved/restored rather than cleared, in case a dashboard author's own
+  // `visibility` config manages the same property.
+  _updateHiddenHostCard(hidden) {
+    const hostCard = this.closest('hui-card');
+    if (!hostCard) return;
+    const hasPrevious = Object.prototype.hasOwnProperty.call(this, '_hostCardPreviousDisplay');
+    if (hidden) {
+      if (!hasPrevious) this._hostCardPreviousDisplay = hostCard.style.display ?? '';
+      hostCard.style.display = 'none';
+    } else if (hasPrevious) {
+      hostCard.style.display = this._hostCardPreviousDisplay;
+      delete this._hostCardPreviousDisplay;
+    }
   }
 
   getCardSize() {
