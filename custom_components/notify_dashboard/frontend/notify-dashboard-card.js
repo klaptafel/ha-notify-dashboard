@@ -54,7 +54,11 @@ const CARD_CSS = `
     font-family: var(--ha-font-family-body, inherit);
     -webkit-font-smoothing: var(--ha-font-smoothing, auto);
   }
-  :host(.hidden) { display: none !important; margin: 0 !important; padding: 0 !important; min-height: 0 !important; }
+  /* hide_when_empty sets the real hidden property (see _render), not a
+     class, so hui-card's own visibility logic can see it too (see
+     getCardSize's own comment). This rule just makes our own element
+     collapse the same aggressive way the old class-based one did. */
+  :host([hidden]) { display: none !important; margin: 0 !important; padding: 0 !important; min-height: 0 !important; }
 
   /* A low-opacity color-mix wash over the row background, not solid text/
      background: color is user-supplied and arbitrary, so a full-strength
@@ -560,6 +564,14 @@ class NotifyDashboardCard extends HTMLElement {
     // action on, so the rest of the card stays exactly as reactive as
     // fixed (no general "lag behind reality" reintroduced).
     this._pendingRemoval = new Map();
+    // A real, documented LovelaceCard interface property (confirmed
+    // against home-assistant/frontend's own types.ts and hui-card.ts):
+    // without it, hui-card's own _setElementVisibility removes this card
+    // from its DOM entirely the moment it goes hidden, which would also
+    // stop hass from ever being pushed to it again, leaving it hidden
+    // forever with no way to notice items becoming available again and
+    // show itself once more.
+    this.connectedWhileHidden = true;
     // Lovelace can create this element and assign `.hass` before our own
     // module has finished loading/registering the class (the resource is
     // fetched as an ES module, which loads asynchronously); that first
@@ -1208,15 +1220,13 @@ class NotifyDashboardCard extends HTMLElement {
     const holding = this._pendingRemoval.size > 0;
 
     if (!items.length && !holding && this._config.hide_when_empty) {
-      this.classList.add('hidden');
-      this._updateHiddenHostCard(true);
+      this.hidden = true;
       this._teardownRows();
       this._root.innerHTML = '';
       this._containerKind = null;
       return;
     }
-    this.classList.remove('hidden');
-    this._updateHiddenHostCard(false);
+    this.hidden = false;
 
     if (!items.length && !holding) {
       this._teardownRows();
@@ -1257,27 +1267,24 @@ class NotifyDashboardCard extends HTMLElement {
     this._syncRows(items, layout);
   }
 
-  // :host(.hidden) and getCardSize()'s weight-0 only affect this card's own
-  // element, not the real <hui-card> ancestor HA wraps it in, which stays a
-  // present grid item and still leaves a masonry gap (see Bubble-Card#2535
-  // for the same fix on their popup host). Previous inline display value is
-  // saved/restored rather than cleared, in case a dashboard author's own
-  // `visibility` config manages the same property.
-  _updateHiddenHostCard(hidden) {
-    const hostCard = this.closest('hui-card');
-    if (!hostCard) return;
-    const hasPrevious = Object.prototype.hasOwnProperty.call(this, '_hostCardPreviousDisplay');
-    if (hidden) {
-      if (!hasPrevious) this._hostCardPreviousDisplay = hostCard.style.display ?? '';
-      hostCard.style.display = 'none';
-    } else if (hasPrevious) {
-      hostCard.style.display = this._hostCardPreviousDisplay;
-      delete this._hostCardPreviousDisplay;
-    }
-  }
-
+  // The real <hui-card> HA wraps this element in already collapses itself
+  // to nothing whenever this.hidden is true (confirmed against
+  // hui-card.ts's own real source, _updateVisibility/_setElementVisibility:
+  // it checks this._element.hidden on every hass push and sets its own
+  // style.display accordingly), so setting the actual DOM property above
+  // is enough on its own. A first attempt instead reached into hui-card
+  // directly and set its style.display by hand, the same shape
+  // https://github.com/Clooos/Bubble-Card/pull/2535 uses for their own
+  // popup host, but that fought a losing battle against hui-card's own
+  // _updateVisibility, which re-derives its own style.display from
+  // this.hidden on every single hass push and would silently undo a
+  // manual override moments later, since it had no idea we ever hidden
+  // ourselves. connectedWhileHidden (see the constructor) is what keeps
+  // hass pushes coming at all once hidden, otherwise hui-card removes
+  // this element outright and it could never notice items becoming
+  // available again.
   getCardSize() {
-    if (this._config?.hide_when_empty && this.classList.contains('hidden')) return 0;
+    if (this._config?.hide_when_empty && this.hidden) return 0;
     return 3;
   }
 
