@@ -2,4 +2,5 @@ pytest-homeassistant-custom-component==0.13.355
 pytest-asyncio
 pytest-cov
 freezegun
+voluptuous-serialize
 mypy==2.3.0
