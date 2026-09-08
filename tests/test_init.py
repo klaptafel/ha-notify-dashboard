@@ -17,8 +17,6 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.notify_dashboard import (
     CONFIG_SCHEMA,
     async_setup,
-    async_setup_entry,
-    async_unload_entry,
 )
 from custom_components.notify_dashboard.const import (
     DOMAIN,
@@ -64,8 +62,8 @@ async def test_setup_entry_sets_mirror_dismiss_to_from_options(
     )
     entry.add_to_hass(hass)
 
-    result = await async_setup_entry(hass, entry)
-    assert result is True
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
     assert hass.data[DOMAIN]["mirror_dismiss_to"] == ["notify.mobile_app"]
 
 
@@ -77,7 +75,8 @@ async def test_dual_setup_yaml_then_entry_is_idempotent(
 
     entry = MockConfigEntry(domain=DOMAIN, options={})
     entry.add_to_hass(hass)
-    await async_setup_entry(hass, entry)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
     assert hass.data[DOMAIN]["store"] is store_before
 
@@ -87,7 +86,8 @@ async def test_dual_setup_entry_then_yaml_is_idempotent(
 ):
     entry = MockConfigEntry(domain=DOMAIN, options={})
     entry.add_to_hass(hass)
-    await async_setup_entry(hass, entry)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
     store_before = hass.data[DOMAIN]["store"]
 
     await async_setup(hass, {})
@@ -102,7 +102,8 @@ async def test_yaml_alongside_config_entry_warns_and_entry_wins(
         domain=DOMAIN, options={"mirror_dismiss_to": ["notify.from_entry"]}
     )
     entry.add_to_hass(hass)
-    await async_setup_entry(hass, entry)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
     await async_setup(hass, {DOMAIN: {"mirror_dismiss_to": ["notify.from_yaml"]}})
 
@@ -117,10 +118,11 @@ async def test_unload_entry_clears_mirror_dismiss_to(
         domain=DOMAIN, options={"mirror_dismiss_to": ["notify.mobile_app"]}
     )
     entry.add_to_hass(hass)
-    await async_setup_entry(hass, entry)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
-    result = await async_unload_entry(hass, entry)
-    assert result is True
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
     assert hass.data[DOMAIN]["mirror_dismiss_to"] == []
 
 
@@ -129,7 +131,8 @@ async def test_options_update_reloads_mirror_dismiss_to(
 ):
     entry = MockConfigEntry(domain=DOMAIN, options={})
     entry.add_to_hass(hass)
-    await async_setup_entry(hass, entry)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
 
     hass.config_entries.async_update_entry(
         entry, options={"mirror_dismiss_to": ["notify.mobile_app"]}
