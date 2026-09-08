@@ -3,4 +3,4 @@ pytest-asyncio
 pytest-cov
 freezegun
 voluptuous-serialize
-mypy==2.3.0
+mypy==2.3.1
