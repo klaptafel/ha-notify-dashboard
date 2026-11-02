@@ -1,5 +1,5 @@
 [![Made for Home Assistant](https://img.shields.io/badge/Made%20for-Home%20Assistant-blue?style=for-the-badge&logo=homeassistant)](https://www.home-assistant.io/)
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://github.com/hacs/integration)
+[![marketplace_badge](https://img.shields.io/badge/Marketplace-Custom-orange.svg?style=for-the-badge)](https://contributors.home-assistant.io/marketplace/)
 
 # Notify Dashboard: Home Assistant notification dashboard integration
 
@@ -25,11 +25,11 @@ A `notify.dashboard` notify service plus a matching Lovelace card, so notificati
 
 ## Installation
 
-This integration isn't in the HACS default store yet, so add it as a custom repository.
+This integration isn't in the Marketplace catalog yet, so add it as a custom repository.
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=klaptafel&repository=ha-notify-dashboard&category=integration)
+[![Open your Home Assistant instance and open a repository inside the Marketplace.](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=klaptafel&repository=ha-notify-dashboard&category=integration)
 
-1. In HACS, add `https://github.com/klaptafel/ha-notify-dashboard` as a custom repository
+1. In the Marketplace, add `https://github.com/klaptafel/ha-notify-dashboard` as a custom repository
    (category: Integration).
 2. Install "Notify Dashboard" and restart Home Assistant.
 
@@ -156,6 +156,6 @@ data:
 
 1. Remove the `notify: - platform: notify_dashboard` block from `configuration.yaml`.
 2. Remove the integration via Settings → Devices & Services → Notify Dashboard → delete.
-3. Remove `custom_components/notify_dashboard` (or the HACS repository).
+3. Remove `custom_components/notify_dashboard` (or the Marketplace repository).
 
 Stored data lives in `.storage/notify_dashboard.notifications`: delete that file manually if you also want to wipe saved notifications/live activities/history.
